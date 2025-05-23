@@ -1,3 +1,5 @@
+from torchsummary import summary
+
 import resnet as m
 # models for FashionMNIST
 R18_FMNIST = m.ResNet18()
