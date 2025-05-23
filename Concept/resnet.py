@@ -109,7 +109,11 @@ def ResNet18(numClasses=10, inChannels=1):
 
 def ResNet18x2(numClasses=10, inChannels=1):
     """ResNet18 with approximately 2x parameters using sqrt(2) width multiplier"""
-    return ResNet(BasicBlock, [2, 2, 2, 2], inChannels, numClasses, width_multiplier=math.sqrt(2))
+    return ResNet(BasicBlock, [2, 2, 2, 2], inChannels, numClasses, width_multiplier=2)
+
+# def ResNet18x2(numClasses=10, inChannels=1):
+#     """ResNet18 with approximately 2x parameters using sqrt(2) width multiplier"""
+#     return ResNet(BasicBlock, [2, 2, 2, 2], inChannels, numClasses, width_multiplier=math.sqrt(2))
     
 import torch
 from torch.autograd.function import _SingleLevelFunction
