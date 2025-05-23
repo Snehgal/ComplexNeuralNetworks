@@ -2,12 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
-from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear, ComplexMaxPool2d
+from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear, ComplexMaxPool2d,ComplexAvgPool2d
 from complexPyTorch.complexFunctions import complex_relu, complex_max_pool2d
 import math
 
 # LENET
-
 class LeNet(nn.Module):
     def __init__(self):
         super(LeNet, self).__init__()
@@ -26,9 +25,6 @@ class LeNet(nn.Module):
         x = F.relu(self.fc2(x))
         x = self.fc3(x)
         return x
-
-
-
 
 class LeNet2x(nn.Module):
     def __init__(self):
@@ -63,9 +59,9 @@ class ComplexLeNet(nn.Module):
 
         # Convolutional layers (with doubled channels)
         self.conv1 = ComplexConv2d(in_channels=1, out_channels=6, kernel_size=5)  # 6→12
-        self.pool1 = nn.AvgPool2d(2, 2)
+        self.pool1 = ComplexAvgPool2d(2, 2)
         self.conv2 = ComplexConv2d(in_channels=6, out_channels=16, kernel_size=5)  # 16→32
-        self.pool2 = nn.AvgPool2d(2, 2)
+        self.pool2 = ComplexAvgPool2d(2, 2)
 
         # Fully connected layers
         self.fc1 = ComplexLinear(in_features=16*5*5, out_features=120)  # 120→240
@@ -247,9 +243,8 @@ class ComplexCustomCNN(nn.Module):
         return x.real
 
 
-def count_parameters(model):
+def count_parameters(model,p=True):
     total = sum(p.numel() for p in model.parameters())
-    print(f'Total parameters: {total:,}')
+    if p:
+        print(f'Total parameters: {total:,}')
     return total
-
-
