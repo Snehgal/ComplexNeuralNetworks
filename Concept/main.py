@@ -2,9 +2,11 @@ from torchsummary import summary
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import matplotlib.pyplot as plt
+
 import resnet as res
 import model as mod
-from dataloader import ComplexDataLoader
+from dataloader import RealDataLoader, ComplexDataLoader
 
 # === Custom CNN Models ===
 custom_models = {
@@ -41,49 +43,154 @@ def modelSizes():
         params = mod.count_parameters(model_instance,False)
         print(f"\n{name}: {params:,} parameters")
 
-def trainOnce():
-    dataset = "fashion"
+def trainOnce(dataset="fashion"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"\nRunning on {device}")
 
-    # Data
-    loader = ComplexDataLoader(dataset = "fashion",batchSize=16, shuffle=True)
+    # Update models for CIFAR input channels
+    if dataset == "cifar":
+        custom_models["ResNet18"] = res.ResNet18(inChannels=3)
+        custom_models["ResNet18x2"] = res.ResNet18x2(inChannels=3)
+        custom_models["ComplexResNet18"] = res.ComplexResNet18(inChannels=3)
+    else:
+        custom_models["ResNet18"] = res.ResNet18(inChannels=1)
+        custom_models["ResNet18x2"] = res.ResNet18x2(inChannels=1)
+        custom_models["ComplexResNet18"] = res.ComplexResNet18(inChannels=1)
+
+    # Load complex dataset (fashion or cifar)
+    loader = ComplexDataLoader(dataset=dataset, batchSize=16, shuffle=True)
     data_iter = iter(loader)
     inputs, targets = next(data_iter)
     inputs, targets = inputs.to(device), targets.to(device)
 
-    # Model Forward-Backward loop
+    print(f"Dataset: {dataset}, Input shape: {inputs.shape}")
+
+    # Loss function
     loss_fn = nn.CrossEntropyLoss()
 
     print("\n=== One Forward-Backward Iteration Per Model ===")
-
 
     for name, model_instance in custom_models.items():
         print(f"\n{name}:")
         model = model_instance.to(device)
         model.train()
 
-        # Prepare optimizer
         optimizer = optim.SGD(model.parameters(), lr=0.01)
 
-        # For complex inputs: cast to complex dtype
-        if inputs.shape[1] == 2 and 'Complex' in name:
-            x = torch.complex(inputs[:, 0, :, :], inputs[:, 1, :, :]).unsqueeze(1)  # (B, 1, H, W)
+        # Prepare input based on model type and dataset
+        if 'Complex' in name:
+            # Complex models expect complex input
+            if len(inputs.shape) == 5:  # CIFAR case (B, 2, 3, H, W)
+                B, two, C, H, W = inputs.shape
+                # Combine real/imag and color channels
+                x = inputs.reshape(B, two * C, H, W)  # (B, 6, H, W)
+                # Convert to complex by pairing channels (0,1), (2,3), (4,5)
+                x = torch.complex(x[:, 0::2, :, :], x[:, 1::2, :, :])  # (B, 3, H, W)
+            else:  # Fashion case (B, 2, H, W)
+                x = torch.complex(inputs[:, 0, :, :], inputs[:, 1, :, :]).unsqueeze(1)  # (B, 1, H, W)
         else:
-            x = inputs if inputs.shape[1] == 1 else inputs[:, :1, :, :]  # fallback if input is 2-ch
-        # Forward
+            # Real models expect real input
+            if len(inputs.shape) == 5:  # CIFAR case
+                # Take just the real part and all color channels
+                x = inputs[:, 0, :, :, :]  # (B, 3, H, W)
+            else:  # Fashion case
+                x = inputs[:, 0, :, :].unsqueeze(1)  # (B, 1, H, W)
+
         try:
             outputs = model(x)
-            # =============================
-            # Fix for complex-valued output -> to change and decide later
             if torch.is_complex(outputs):
-                outputs = outputs.abs()  # or outputs.real
-            # =============================
+                outputs = outputs.abs()
             loss = loss_fn(outputs, targets)
             loss.backward()
             optimizer.step()
             print(f"Loss: {loss.item():.4f}")
         except Exception as e:
             print(f"Error in {name}: {e}")
-            
-trainOnce()
+
+def show_images(images, title, is_complex=False):
+    num_samples = min(5, images.shape[0])
+    rows = 2 if is_complex else 1
+    plt.figure(figsize=(num_samples * 2.4, 2.5 * rows))
+
+    for i in range(num_samples):
+        img = images[i]
+
+        if is_complex:
+            if img.ndim == 3 and img.shape[0] == 2:
+                # Fashion Complex: (2, H, W)
+                real = img[0]
+                imag = img[1]
+                magnitude = torch.log1p((real**2 + imag**2).sqrt())
+                phase = torch.atan2(imag, real)
+
+                # Magnitude
+                plt.subplot(rows, num_samples, i + 1)
+                plt.imshow(magnitude, cmap='gray')
+                plt.title(f"Mag {i+1}")
+                plt.axis('off')
+
+                # Phase
+                plt.subplot(rows, num_samples, i + 1 + num_samples)
+                plt.imshow(phase, cmap='twilight_shifted')
+                plt.title(f"Phase {i+1}")
+                plt.axis('off')
+
+            elif img.ndim == 4 and img.shape[0] == 2:
+                # CIFAR Complex: (2, 3, H, W)
+                real = img[0]
+                imag = img[1]
+                magnitude = torch.log1p((real**2 + imag**2).sqrt())
+                phase = torch.atan2(imag, real)
+
+                # Magnitude
+                plt.subplot(rows, num_samples, i + 1)
+                rgb_mag = magnitude.permute(1, 2, 0).clamp(0, 1)
+                plt.imshow(rgb_mag)
+                plt.title(f"Mag {i+1}")
+                plt.axis('off')
+
+                # Phase
+                plt.subplot(rows, num_samples, i + 1 + num_samples)
+                rgb_phase = phase.permute(1, 2, 0).clamp(0, 1)
+                plt.imshow(rgb_phase, cmap='twilight_shifted')
+                plt.title(f"Phase {i+1}")
+                plt.axis('off')
+        else:
+            plt.subplot(1, num_samples, i + 1)
+            if images.shape[1] == 3:
+                # CIFAR Real
+                img = images[i].permute(1, 2, 0)
+                plt.imshow(img)
+            else:
+                # Fashion Real
+                plt.imshow(images[i][0], cmap='gray')
+            plt.title(f"Image {i+1}")
+            plt.axis('off')
+
+    plt.suptitle(title)
+    plt.tight_layout()
+    plt.show()
+
+def showData():
+    # Load 1 batch from each type
+    real_fashion_loader = RealDataLoader("fashion", batchSize=5, shuffle=False)
+    complex_fashion_loader = ComplexDataLoader("fashion", batchSize=5, shuffle=False)
+    real_cifar_loader = RealDataLoader("cifar", batchSize=5, shuffle=False)
+    complex_cifar_loader = ComplexDataLoader("cifar", batchSize=5, shuffle=False)
+
+    # Get one batch each
+    real_fashion_imgs, _ = next(iter(real_fashion_loader))
+    complex_fashion_imgs, _ = next(iter(complex_fashion_loader))
+    real_cifar_imgs, _ = next(iter(real_cifar_loader))
+    complex_cifar_imgs, _ = next(iter(complex_cifar_loader))
+
+    # Show the images
+    show_images(real_fashion_imgs, "FashionMNIST (Real)")
+    show_images(complex_fashion_imgs, "FashionMNIST (Complex)", is_complex=True)
+    show_images(real_cifar_imgs, "CIFAR10 (Real)")
+    show_images(complex_cifar_imgs, "CIFAR10 (Complex)", is_complex=True)
+
+# showData()
+# modelSizes()
+trainOnce("fashion")
+trainOnce("cifar")
