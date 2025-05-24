@@ -45,56 +45,67 @@ def modelSizes():
 
 def trainOnce(dataset="fashion"):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    print(f"\n====================Train once on {dataset}===================")
     print(f"\nRunning on {device}")
+    real_model_names = {"ResNet18", "ResNet18x2", "LeNet", "LeNet2x", "CustomCNN", "CustomCNN2x"}
 
     # Update models for CIFAR input channels
     if dataset == "cifar":
         custom_models["ResNet18"] = res.ResNet18(inChannels=3)
         custom_models["ResNet18x2"] = res.ResNet18x2(inChannels=3)
         custom_models["ComplexResNet18"] = res.ComplexResNet18(inChannels=3)
+        custom_models["CustomCNN"] = mod.CustomCNN(in_channels=3)
+        custom_models["CustomCNN2x"] = mod.CustomCNN2x(in_channels=3)
+        custom_models["ComplexCustomCNN"] = mod.ComplexCustomCNN(in_channels=3)
+        custom_models["LeNet"] = mod.LeNet(in_channels=3)
+        custom_models["LeNet2x"] = mod.LeNet2x(in_channels=3)
+        custom_models["ComplexLeNet"] = mod.ComplexLeNet(in_channels=3)
     else:
         custom_models["ResNet18"] = res.ResNet18(inChannels=1)
         custom_models["ResNet18x2"] = res.ResNet18x2(inChannels=1)
         custom_models["ComplexResNet18"] = res.ComplexResNet18(inChannels=1)
+        custom_models["CustomCNN"] = mod.CustomCNN(in_channels=1)
+        custom_models["CustomCNN2x"] = mod.CustomCNN2x(in_channels=1)
+        custom_models["ComplexCustomCNN"] = mod.ComplexCustomCNN(in_channels=1)
+        custom_models["LeNet"] = mod.LeNet(in_channels=1)
+        custom_models["LeNet2x"] = mod.LeNet2x(in_channels=1)
+        custom_models["ComplexLeNet"] = mod.ComplexLeNet(in_channels=1)
 
-    # Load complex dataset (fashion or cifar)
-    loader = ComplexDataLoader(dataset=dataset, batchSize=16, shuffle=True)
-    data_iter = iter(loader)
-    inputs, targets = next(data_iter)
-    inputs, targets = inputs.to(device), targets.to(device)
-
-    print(f"Dataset: {dataset}, Input shape: {inputs.shape}")
-
-    # Loss function
-    loss_fn = nn.CrossEntropyLoss()
-
-    print("\n=== One Forward-Backward Iteration Per Model ===")
-
+    rL = RealDataLoader(dataset=dataset, batchSize=16, shuffle=True)
+    cL = ComplexDataLoader(dataset=dataset, batchSize=16, shuffle=True)
     for name, model_instance in custom_models.items():
         print(f"\n{name}:")
+
+        # Choose the correct DataLoader
+        if name in real_model_names:
+            loader = rL
+        else:
+            loader = cL
+
+        data_iter = iter(loader)
+        inputs, targets = next(data_iter)
+        inputs, targets = inputs.to(device), targets.to(device)
+
+        print(f"Dataset: {dataset}, Input shape: {inputs.shape}")
+
         model = model_instance.to(device)
         model.train()
-
         optimizer = optim.SGD(model.parameters(), lr=0.01)
+        loss_fn = nn.CrossEntropyLoss()
 
-        # Prepare input based on model type and dataset
+        # Prepare input
         if 'Complex' in name:
-            # Complex models expect complex input
-            if len(inputs.shape) == 5:  # CIFAR case (B, 2, 3, H, W)
+            if len(inputs.shape) == 5:  # CIFAR (B, 2, 3, H, W)
                 B, two, C, H, W = inputs.shape
-                # Combine real/imag and color channels
-                x = inputs.reshape(B, two * C, H, W)  # (B, 6, H, W)
-                # Convert to complex by pairing channels (0,1), (2,3), (4,5)
-                x = torch.complex(x[:, 0::2, :, :], x[:, 1::2, :, :])  # (B, 3, H, W)
-            else:  # Fashion case (B, 2, H, W)
-                x = torch.complex(inputs[:, 0, :, :], inputs[:, 1, :, :]).unsqueeze(1)  # (B, 1, H, W)
+                x = inputs.reshape(B, two * C, H, W)
+                x = torch.complex(x[:, 0::2, :, :], x[:, 1::2, :, :])
+            else:  # Fashion (B, 2, H, W)
+                x = torch.complex(inputs[:, 0, :, :], inputs[:, 1, :, :]).unsqueeze(1)
         else:
-            # Real models expect real input
-            if len(inputs.shape) == 5:  # CIFAR case
-                # Take just the real part and all color channels
-                x = inputs[:, 0, :, :, :]  # (B, 3, H, W)
-            else:  # Fashion case
-                x = inputs[:, 0, :, :].unsqueeze(1)  # (B, 1, H, W)
+            if len(inputs.shape) == 5:  # Complex CIFAR, real model
+                x = inputs[:, 0, :, :, :]  # take only real part
+            else:
+                x = inputs  # already real (B, 1, H, W) or (B, 3, H, W)
 
         try:
             outputs = model(x)
