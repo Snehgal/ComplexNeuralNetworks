@@ -7,19 +7,14 @@ spec:
     spec:
       containers:
       - name: complex-nn-container
-        image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime  # Includes Python + PyTorch + CUDA
+        image: pytorch/pytorch:2.2.0-cpu
         command: ["bash", "-c"]
         args:
           - |
-            pip install matplotlib numpy torchsummary complexPyTorch &&
-            python main.py
-        volumeMounts:
-        - name: code
-          mountPath: /app
-        workingDir: /app
+            apt update && apt install -y git &&
+            git clone https://github.com/Snehgal/ComplexNeuralNetworks.git &&
+            cd ComplexNeuralNetworks &&
+            pip install --no-cache-dir -r Concept/requirements.txt &&
+            python Concept/main.py
       restartPolicy: Never
-      volumes:
-      - name: code
-        configMap:
-          name: complex-nn-code
   backoffLimit: 3
