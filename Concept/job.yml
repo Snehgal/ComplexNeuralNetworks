@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: complex-nn-job-gpu
+  name: complex-nn-job-gpu-fixed
 spec:
   template:
     spec:
@@ -9,7 +9,7 @@ spec:
         - name: nvcr.dgxkey
       containers:
         - name: complex-nn-container
-          image: pytorch/pytorch:1.9.0-cuda11.1-cudnn8-runtime  # CUDA-enabled PyTorch image
+          image: pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime  # Updated PyTorch version
           command: ["bash", "-c"]
           args:
             - |
@@ -18,10 +18,14 @@ spec:
               echo "Python version: $(python --version)"
               echo "Current time: $(date)"
               
+              # Create virtual environment
+              python -m venv /workspace/venv
+              source /workspace/venv/bin/activate
+              
               # Verify CUDA is available
               echo "=== Checking CUDA availability ==="
               nvidia-smi
-              python -c "import torch; print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Number of GPUs: {torch.cuda.device_count()}')"
+              python -c "import torch; print(f'PyTorch version: {torch.__version__}'); print(f'CUDA available: {torch.cuda.is_available()}'); print(f'Number of GPUs: {torch.cuda.device_count()}')"
 
               # Install system dependencies
               echo "=== Installing system dependencies ==="
@@ -39,6 +43,7 @@ spec:
 
               # Install requirements
               echo "=== Installing Python requirements ==="
+              pip install --upgrade pip
               if [ -f "requirements.txt" ]; then
                   cat requirements.txt
                   pip install --no-cache-dir -r requirements.txt
@@ -49,6 +54,9 @@ spec:
 
               # Install torchsummary
               pip install --no-cache-dir torchsummary
+
+              # Debug: Show PyTorch build info
+              python -c "import torch; print('\n=== PyTorch Build Info ==='); print(torch.__config__.show())"
 
               # Run the main script
               echo "=== Starting main script ==="
@@ -67,6 +75,6 @@ spec:
             limits:
               memory: "4Gi"
               cpu: "2000m"
-              nvidia.com/gpu: 1  # Requesting 1 GPU
+              nvidia.com/gpu: 1
       restartPolicy: Never
   backoffLimit: 3
