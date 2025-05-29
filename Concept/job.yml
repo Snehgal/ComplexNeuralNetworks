@@ -1,7 +1,7 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: complex-nn-job-gpu-fixed
+  name: complex-nn-job-gpu-final
 spec:
   template:
     spec:
@@ -9,7 +9,7 @@ spec:
         - name: nvcr.dgxkey
       containers:
         - name: complex-nn-container
-          image: pytorch/pytorch:1.13.1-cuda11.6-cudnn8-runtime  # Updated PyTorch version
+          image: pytorch/pytorch:2.2.1-cuda12.1-cudnn8-runtime  # Updated to latest stable
           command: ["bash", "-c"]
           args:
             - |
@@ -18,9 +18,13 @@ spec:
               echo "Python version: $(python --version)"
               echo "Current time: $(date)"
               
-              # Create virtual environment
+              # Create and activate virtual environment
               python -m venv /workspace/venv
               source /workspace/venv/bin/activate
+              
+              # First install PyTorch with CUDA support
+              echo "=== Installing PyTorch with CUDA ==="
+              pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
               
               # Verify CUDA is available
               echo "=== Checking CUDA availability ==="
@@ -54,9 +58,6 @@ spec:
 
               # Install torchsummary
               pip install --no-cache-dir torchsummary
-
-              # Debug: Show PyTorch build info
-              python -c "import torch; print('\n=== PyTorch Build Info ==='); print(torch.__config__.show())"
 
               # Run the main script
               echo "=== Starting main script ==="
