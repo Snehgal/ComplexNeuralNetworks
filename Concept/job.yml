@@ -55,7 +55,7 @@
                 # Run the main script
                 echo "=== Starting main script ==="
                 if [ -f "Concept/main.py" ]; then
-                    python Concept/main.py
+                    python -u Concept/main.py
                 else
                     echo "main.py not found, listing available Python files:"
                     find . -name "*.py" -type f
