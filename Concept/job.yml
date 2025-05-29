@@ -41,9 +41,9 @@
 
                                 # Install requirements
                 echo "=== Installing Python requirements ==="
-                if [ -f "Concept/requirements.txt" ]; then
-                    cat Concept/requirements.txt
-                    pip install --no-cache-dir -r Concept/requirements.txt
+                if [ -f "requirements.txt" ]; then
+                    cat requirements.txt
+                    pip install --no-cache-dir -r requirements.txt
                 else
                     echo "requirements.txt not found, installing common dependencies"
                     pip install --no-cache-dir numpy matplotlib scipy scikit-learn
