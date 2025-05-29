@@ -1,70 +1,73 @@
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: complex-nn-job-working
-spec:
-  template:
-    spec:
-      containers:
-      - name: complex-nn-container
-        image: python:3.9
-        imagePullPolicy: IfNotPresent
-        command: ["bash", "-c"]
-        args:
-          - |
-            set -e
-            echo "=== Complex Neural Network Job Started ==="
-            echo "Python version: $(python --version)"
-            echo "Current time: $(date)"
-            
-            # Update apt and install git (python:3.9 doesn't have the /tmp issue)
-            echo "=== Installing system dependencies ==="
-            apt-get update
-            apt-get install -y git
-            
-            # Install PyTorch CPU version (faster than GPU version)
-            echo "=== Installing PyTorch ==="
-            pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
-            
-            # Verify PyTorch installation
-            python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
-            
-            # Clone the repository
-            echo "=== Cloning repository ==="
-            git clone https://github.com/Snehgal/ComplexNeuralNetworks.git
-            cd ComplexNeuralNetworks
-            
-            # List contents to verify
-            echo "=== Repository contents ==="
-            ls -la
-            ls -la Concept/ 2>/dev/null || echo "Concept directory not found"
-            
-            # Install requirements
-            echo "=== Installing Python requirements ==="
-            if [ -f "Concept/requirements.txt" ]; then
-                cat Concept/requirements.txt
-                pip install --no-cache-dir -r Concept/requirements.txt
-            else
-                echo "requirements.txt not found, installing common dependencies"
-                pip install --no-cache-dir numpy matplotlib scipy scikit-learn
-            fi
-            
-            # Run the main script
-            echo "=== Starting main script ==="
-            if [ -f "Concept/main.py" ]; then
-                python Concept/main.py
-            else
-                echo "main.py not found, listing available Python files:"
-                find . -name "*.py" -type f
-            fi
-            
-            echo "=== Job completed successfully at $(date) ==="
-        resources:
-          requests:
-            memory: "1Gi"
-            cpu: "500m"
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
-      restartPolicy: Never
-  backoffLimit: 3
+  apiVersion: batch/v1
+  kind: Job
+  metadata:
+    name: complex-nn-job-working
+  spec:
+    template:
+      spec:
+        containers:
+          - name: complex-nn-container
+            image: python:3.9
+            imagePullPolicy: IfNotPresent
+            command: ["bash", "-c"]
+            args:
+              - |
+                set -e
+                echo "=== Complex Neural Network Job Started ==="
+                echo "Python version: $(python --version)"
+                echo "Current time: $(date)"
+
+                # Update apt and install git (python:3.9 doesn't have the /tmp issue)
+                echo "=== Installing system dependencies ==="
+                apt-get update
+                apt-get install -y git
+
+                # Install PyTorch CPU version (faster than GPU version)
+                echo "=== Installing PyTorch ==="
+                pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+
+                # Verify PyTorch installation
+                python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
+
+                # Clone the repository
+                echo "=== Cloning repository ==="
+                git clone https://github.com/Snehgal/ComplexNeuralNetworks.git
+                cd ComplexNeuralNetworks
+
+                # List contents to verify
+                echo "=== Repository contents ==="
+                ls -la
+                ls -la Concept/ 2>/dev/null || echo "Concept directory not found"
+
+                                # Install requirements
+                echo "=== Installing Python requirements ==="
+                if [ -f "Concept/requirements.txt" ]; then
+                    cat Concept/requirements.txt
+                    pip install --no-cache-dir -r Concept/requirements.txt
+                else
+                    echo "requirements.txt not found, installing common dependencies"
+                    pip install --no-cache-dir numpy matplotlib scipy scikit-learn
+                fi
+
+                # NEW LINE: install torchsummary
+                pip install --no-cache-dir torchsummary
+
+                # Run the main script
+                echo "=== Starting main script ==="
+                if [ -f "Concept/main.py" ]; then
+                    python Concept/main.py
+                else
+                    echo "main.py not found, listing available Python files:"
+                    find . -name "*.py" -type f
+                fi
+
+                echo "=== Job completed successfully at $(date) ==="
+            resources:
+              requests:
+                memory: "1Gi"
+                cpu: "500m"
+              limits:
+                memory: "4Gi"
+                cpu: "2000m"
+        restartPolicy: Never
+    backoffLimit: 3

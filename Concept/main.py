@@ -1,9 +1,8 @@
-from torchsummary import summary
 import torch
 import torch.nn as nn
 import torch.optim as optim
 import matplotlib.pyplot as plt
-
+from torchsummary import summary
 import resnet as res
 import model as mod
 from dataloader import RealDataLoader, ComplexDataLoader
