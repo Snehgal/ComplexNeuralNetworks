@@ -1,0 +1,25 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: complex-nn-job
+spec:
+  template:
+    spec:
+      containers:
+      - name: complex-nn-container
+        image: pytorch/pytorch:2.2.0-cuda12.1-cudnn8-runtime  # Includes Python + PyTorch + CUDA
+        command: ["bash", "-c"]
+        args:
+          - |
+            pip install matplotlib numpy torchsummary complexPyTorch &&
+            python main.py
+        volumeMounts:
+        - name: code
+          mountPath: /app
+        workingDir: /app
+      restartPolicy: Never
+      volumes:
+      - name: code
+        configMap:
+          name: complex-nn-code
+  backoffLimit: 3

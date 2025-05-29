@@ -203,5 +203,6 @@ def showData():
 
 # showData()
 # modelSizes()
-trainOnce("fashion")
-trainOnce("cifar")
+if __name__ == "__main__":
+    trainOnce("fashion")
+    trainOnce("cifar")
