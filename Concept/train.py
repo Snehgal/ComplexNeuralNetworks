@@ -43,6 +43,8 @@ def train_model(model_name, model_instance, epochs, learning_rate, dataset="fash
                                 batch_size=batch_size, split="val", val_split=val_split)
     test_loader = get_dataloader(dataset_type=dataset, complex_data=complex_data,
                                  batch_size=batch_size, split="test")
+    best_val_acc = 0.0
+    best_checkpoint_path = os.path.join(save_dir, "best_checkpoint.pt")
 
     # === Training Loop ===
     for epoch in range(start_epoch, epochs):
@@ -85,8 +87,29 @@ def train_model(model_name, model_instance, epochs, learning_rate, dataset="fash
         val_acc = val_correct / val_total
 
         print(f"[{epoch+1}/{epochs}] Train Loss: {train_loss:.4f} Acc: {train_acc:.4f} | "
-              f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
+            f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
 
+        # === Save last checkpoint ===
+        torch.save({
+            "epoch": epoch,
+            "model_state": model.state_dict(),
+            "optimizer_state": optimizer.state_dict(),
+            "val_acc": val_acc,
+            "val_loss": val_loss
+        }, checkpoint_path)
+        
+        # === Save best checkpoint ===
+        if val_acc > best_val_acc:
+            best_val_acc = val_acc
+            torch.save({
+                "epoch": epoch,
+                "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
+                "val_acc": val_acc,
+                "val_loss": val_loss
+            }, best_checkpoint_path)
+            print(f"New best model saved! Val Acc: {val_acc:.4f}")
+            
         # === Save checkpoint ===
         torch.save({
             "epoch": epoch,
