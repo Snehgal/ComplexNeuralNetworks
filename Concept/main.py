@@ -203,5 +203,7 @@ def showData():
 # showData()
 # modelSizes()
 if __name__ == "__main__":
+    print("Started")
     trainOnce("fashion")
     trainOnce("cifar")
+    print("Ended")
