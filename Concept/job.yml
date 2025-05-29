@@ -1,20 +1,57 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: complex-nn-job
+  name: complex-nn-job-fixed
 spec:
   template:
     spec:
+      securityContext:
+        runAsUser: 0  # Run as root to fix permission issues
+        fsGroup: 0
       containers:
       - name: complex-nn-container
-        image: pytorch/pytorch:2.2.0-cpu
+        image: pytorch/pytorch:latest
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          runAsUser: 0  # Run as root
+          allowPrivilegeEscalation: true
         command: ["bash", "-c"]
         args:
           - |
-            apt update && apt install -y git &&
-            git clone https://github.com/Snehgal/ComplexNeuralNetworks.git &&
-            cd ComplexNeuralNetworks &&
-            pip install --no-cache-dir -r Concept/requirements.txt &&
+            set -e  # Exit on any error
+            echo "=== Starting Complex Neural Network Job ==="
+            echo "Current user: $(whoami)"
+            echo "Current directory: $(pwd)"
+            
+            # Fix tmp permissions and update packages
+            chmod 1777 /tmp
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -y
+            apt-get install -y git curl
+            
+            echo "=== Cloning repository ==="
+            git clone https://github.com/Snehgal/ComplexNeuralNetworks.git
+            cd ComplexNeuralNetworks
+            
+            echo "=== Installing Python requirements ==="
+            pip install --no-cache-dir -r Concept/requirements.txt
+            
+            echo "=== Starting main script ==="
             python Concept/main.py
+            
+            echo "=== Job completed successfully ==="
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
       restartPolicy: Never
   backoffLimit: 3
