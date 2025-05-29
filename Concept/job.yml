@@ -1,45 +1,64 @@
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: complex-nn-job-fixed
+  name: complex-nn-job-working
 spec:
   template:
     spec:
-      securityContext:
-        runAsUser: 0  # Run as root to fix permission issues
-        fsGroup: 0
       containers:
       - name: complex-nn-container
-        image: pytorch/pytorch:latest
+        image: python:3.9
         imagePullPolicy: IfNotPresent
-        securityContext:
-          runAsUser: 0  # Run as root
-          allowPrivilegeEscalation: true
         command: ["bash", "-c"]
         args:
           - |
-            set -e  # Exit on any error
-            echo "=== Starting Complex Neural Network Job ==="
-            echo "Current user: $(whoami)"
-            echo "Current directory: $(pwd)"
+            set -e
+            echo "=== Complex Neural Network Job Started ==="
+            echo "Python version: $(python --version)"
+            echo "Current time: $(date)"
             
-            # Fix tmp permissions and update packages
-            chmod 1777 /tmp
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update -y
-            apt-get install -y git curl
+            # Update apt and install git (python:3.9 doesn't have the /tmp issue)
+            echo "=== Installing system dependencies ==="
+            apt-get update
+            apt-get install -y git
             
+            # Install PyTorch CPU version (faster than GPU version)
+            echo "=== Installing PyTorch ==="
+            pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+            
+            # Verify PyTorch installation
+            python -c "import torch; print(f'PyTorch version: {torch.__version__}')"
+            
+            # Clone the repository
             echo "=== Cloning repository ==="
             git clone https://github.com/Snehgal/ComplexNeuralNetworks.git
             cd ComplexNeuralNetworks
             
+            # List contents to verify
+            echo "=== Repository contents ==="
+            ls -la
+            ls -la Concept/ 2>/dev/null || echo "Concept directory not found"
+            
+            # Install requirements
             echo "=== Installing Python requirements ==="
-            pip install --no-cache-dir -r Concept/requirements.txt
+            if [ -f "Concept/requirements.txt" ]; then
+                cat Concept/requirements.txt
+                pip install --no-cache-dir -r Concept/requirements.txt
+            else
+                echo "requirements.txt not found, installing common dependencies"
+                pip install --no-cache-dir numpy matplotlib scipy scikit-learn
+            fi
             
+            # Run the main script
             echo "=== Starting main script ==="
-            python Concept/main.py
+            if [ -f "Concept/main.py" ]; then
+                python Concept/main.py
+            else
+                echo "main.py not found, listing available Python files:"
+                find . -name "*.py" -type f
+            fi
             
-            echo "=== Job completed successfully ==="
+            echo "=== Job completed successfully at $(date) ==="
         resources:
           requests:
             memory: "1Gi"
@@ -47,11 +66,5 @@ spec:
           limits:
             memory: "4Gi"
             cpu: "2000m"
-        volumeMounts:
-        - name: tmp-volume
-          mountPath: /tmp
-      volumes:
-      - name: tmp-volume
-        emptyDir: {}
       restartPolicy: Never
   backoffLimit: 3
