@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mhapod
+spec:
+  selector:
+    matchLabels:
+      run: pytorch
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        run: pytorch
+    spec:
+      containers:
+        - name: pytorch
+          image: nvcr.io/nvidia/pytorch:24.05-py3
+          command: ["/bin/sh", "-c"]
+          args:
+            - >
+              jupyter lab --allow-root --ip=0.0.0.0 --NotebookApp.token='iiitd@123'
+          resources:
+            limits:
+              nvidia.com/gpu: 1
+          ports:
+            - containerPort: 8888
+          volumeMounts:
+            - name: pytorch-data
+              mountPath: /mha
+          workingDir: /mha/mha
+      volumes:
+        - name: pytorch-data
+          hostPath:
+            path: /scratch/home/chirag23176
+            type: Directory
