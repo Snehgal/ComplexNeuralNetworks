@@ -23,8 +23,8 @@ You should see something like
 NAME              TYPE       CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
 pytorch-service   NodePort   10.100.162.207   <none>        80:<PORT>/TCP   11m
 ```
-<PORT> is specified by the only commented line in `mha_service.yml`
-Go to web browser and type <IP ADDRESS (in your email)>:<PORT> and type in the password `iiitd@123
+<PORT > is specified by the only commented line in `mha_service.yml`
+Go to web browser and type <IP ADDRESS (in your email)>:<PORT > and type in the password `iiitd@123
 
 Run below for setup
 
