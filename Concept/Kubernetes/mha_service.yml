@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: pytorch-service
+spec:
+  selector:
+    run: pytorch
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8888
+      nodePort: 30089 #change this to anythign between 300007 to 30900
+  type: NodePort
