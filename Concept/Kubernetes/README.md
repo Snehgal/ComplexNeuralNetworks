@@ -7,9 +7,9 @@ vi mha.yml
 vi mha_service.yml
 ```
 
-Copy paste the respective contents into the .yml files \\
-**You'll have to change file path in mha.yml**
-**volumes:hostPath:path will end with your username**
+- Copy paste the respective contents into the .yml files
+- **You'll have to change file path in mha.yml**
+- **volumes:hostPath:path will end with your username**
 
 ### Run the following commands in order after logging in to cluster
 ```bash
