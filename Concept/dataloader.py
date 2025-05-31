@@ -58,25 +58,53 @@ class ComplexCIFAR10(Dataset):
 
 def get_dataloader(dataset_type="fashion", complex_data=False, batch_size=64, shuffle=True,
                    split="train", val_split=0.1, seed=42):
-    transform = transforms.ToTensor()
     root = "./data"
+
+    if dataset_type == "cifar":
+        if split == "train":
+            transform = transforms.Compose([
+                transforms.RandomCrop(32, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), 
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.4914, 0.4822, 0.4465), 
+                                     (0.2023, 0.1994, 0.2010)),
+            ])
+    elif dataset_type == "fashion":
+        if split == "train":
+            transform = transforms.Compose([
+                transforms.RandomCrop(28, padding=4),
+                transforms.RandomHorizontalFlip(),
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,), (0.5,)),
+            ])
+        else:
+            transform = transforms.Compose([
+                transforms.ToTensor(),
+                transforms.Normalize((0.5,), (0.5,)),
+            ])
+    else:
+        raise ValueError("Unknown dataset: choose 'fashion' or 'cifar'")
 
     # Load full dataset
     if dataset_type == "fashion":
         if complex_data:
-            dataset = ComplexFashionMNIST(root=root, train=(split != "test"))
+            dataset = ComplexFashionMNIST(root=root, train=(split != "test"), transform=transform)
         else:
             dataset = datasets.FashionMNIST(root=root, train=(split != "test"), download=True, transform=transform)
 
     elif dataset_type == "cifar":
         if complex_data:
-            dataset = ComplexCIFAR10(root=root, train=(split != "test"))
+            dataset = ComplexCIFAR10(root=root, train=(split != "test"), transform=transform)
         else:
             dataset = datasets.CIFAR10(root=root, train=(split != "test"), download=True, transform=transform)
-    else:
-        raise ValueError("Unknown dataset: choose 'fashion' or 'cifar'")
 
-    # Split for val
+    # Validation split
     if split == "val":
         total_len = len(dataset)
         val_len = int(total_len * val_split)
@@ -93,4 +121,3 @@ def get_dataloader(dataset_type="fashion", complex_data=False, batch_size=64, sh
         dataset, _ = random_split(dataset, [train_len, val_len])
 
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-
