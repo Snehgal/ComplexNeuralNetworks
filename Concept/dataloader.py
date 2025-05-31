@@ -65,8 +65,7 @@ class ComplexCIFAR10(Dataset):
         real = torch.tensor(fft_img.real, dtype=torch.float32)
         imag = torch.tensor(fft_img.imag, dtype=torch.float32)
 
-        # Return shape: (2, C, H, W)
-        fft_tensor = torch.stack([real, imag], dim=0)
+        fft_tensor = torch.complex(real, imag)
 
         return fft_tensor, label
 
