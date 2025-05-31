@@ -10,16 +10,25 @@ class ComplexFashionMNIST(Dataset):
         self.fashion_mnist = datasets.FashionMNIST(
             root=root,
             train=train,
-            download=True,
-            transform=transform
+            download=True
         )
+        self.transform = transform
 
     def __len__(self):
         return len(self.fashion_mnist)
 
     def __getitem__(self, idx):
         img, label = self.fashion_mnist[idx]
-        img = np.array(img, dtype=np.float32) / 255.0
+
+        # Apply transform BEFORE converting to numpy
+        if self.transform:
+            img = self.transform(img)
+
+        # If transform gave torch.Tensor, convert to numpy
+        if isinstance(img, torch.Tensor):
+            img = img.squeeze().numpy()  # For grayscale, shape (H, W)
+
+        img = img.astype(np.float32)
         fft_img = np.fft.fft2(img)
 
         real = torch.tensor(fft_img.real, dtype=torch.float32)
@@ -28,31 +37,38 @@ class ComplexFashionMNIST(Dataset):
 
         return fft_tensor, label
 
-
 class ComplexCIFAR10(Dataset):
     def __init__(self, root, train=True, transform=None):
         self.cifar10 = datasets.CIFAR10(
             root=root,
             train=train,
             download=True,
-            transform=transform
+            transform=None  # We'll apply transforms manually
         )
+        self.transform = transform
 
     def __len__(self):
         return len(self.cifar10)
 
     def __getitem__(self, idx):
-        img, label = self.cifar10[idx]
-        img = np.array(img, dtype=np.float32) / 255.0  # shape: (H, W, C)
-        fft_img = np.fft.fft2(img, axes=(0, 1))  # shape: (H, W, C)
+        img, label = self.cifar10[idx]  # img is a PIL Image
 
+        if self.transform:
+            img = self.transform(img)  # Tensor shape: (3, 32, 32)
+            img = img.permute(1, 2, 0).numpy()  # Convert to (H, W, C)
+        else:
+            img = np.array(img, dtype=np.float32) / 255.0  # Default normalization
+
+        fft_img = np.fft.fft2(img, axes=(0, 1))  # shape: (H, W, C)
         fft_img = np.transpose(fft_img, (2, 0, 1))  # shape: (C, H, W)
+
         real = torch.tensor(fft_img.real, dtype=torch.float32)
         imag = torch.tensor(fft_img.imag, dtype=torch.float32)
-        fft_tensor = torch.complex(real, imag)  # shape: (C, H, W)
+
+        # Return shape: (2, C, H, W)
+        fft_tensor = torch.stack([real, imag], dim=0)
 
         return fft_tensor, label
-
 
 # === Generalized DataLoader Function ===
 
