@@ -123,18 +123,17 @@ class ComplexLeNet(nn.Module):
                 if m.conv_r.bias is not None:
                     nn.init.constant_(m.conv_r.bias, 0)
                     nn.init.constant_(m.conv_i.bias, 0)
-            elif isinstance(m, ComplexLinear):
-                nn.init.orthogonal_(m.real.weight)
-                nn.init.orthogonal_(m.imag.weight)
-                if m.real.bias is not None:
-                    nn.init.constant_(m.real.bias, 0)
-                    nn.init.constant_(m.imag.bias, 0)
+                    
             elif isinstance(m, ComplexBatchNorm2d):
+                # Initialize batch norm parameters
                 if hasattr(m, 'bn_r') and hasattr(m, 'bn_i'):
                     nn.init.constant_(m.bn_r.weight, 1)
                     nn.init.constant_(m.bn_i.weight, 1)
                     nn.init.constant_(m.bn_r.bias, 0)
                     nn.init.constant_(m.bn_i.bias, 0)
+                else:
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
         print(f"Model is Orthogonally initialized")
                     
     def forward(self, x):
@@ -300,18 +299,17 @@ class ComplexCustomCNN(nn.Module):
                 if m.conv_r.bias is not None:
                     nn.init.constant_(m.conv_r.bias, 0)
                     nn.init.constant_(m.conv_i.bias, 0)
-            elif isinstance(m, ComplexLinear):
-                nn.init.orthogonal_(m.real.weight)
-                nn.init.orthogonal_(m.imag.weight)
-                if m.real.bias is not None:
-                    nn.init.constant_(m.real.bias, 0)
-                    nn.init.constant_(m.imag.bias, 0)
+                    
             elif isinstance(m, ComplexBatchNorm2d):
+                # Initialize batch norm parameters
                 if hasattr(m, 'bn_r') and hasattr(m, 'bn_i'):
                     nn.init.constant_(m.bn_r.weight, 1)
                     nn.init.constant_(m.bn_i.weight, 1)
                     nn.init.constant_(m.bn_r.bias, 0)
                     nn.init.constant_(m.bn_i.bias, 0)
+                else:
+                    nn.init.constant_(m.weight, 1)
+                    nn.init.constant_(m.bias, 0)
         print(f"Model is Orthogonally initialized")
 
         

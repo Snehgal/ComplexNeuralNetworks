@@ -27,10 +27,10 @@ def train_model(model_name, model_instance, epochs, learning_rate, dataset="fash
     # === Optimizer Selection ===
     if optimizer_type.lower() == "sgd":
         optimizer = optim.SGD(model.parameters(), lr=learning_rate, momentum=momentum)
-        print(f"Using SGD optimizer with momentum={momentum}")
+#         print(f"Using SGD optimizer with momentum={momentum}")
     elif optimizer_type.lower() == "adam":
         optimizer = optim.Adam(model.parameters(), lr=learning_rate)
-        print("Using Adam optimizer")
+#         print("Using Adam optimizer")
     else:
         raise ValueError("Unsupported optimizer type. Choose 'adam' or 'sgd'.")
 
