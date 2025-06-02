@@ -94,10 +94,12 @@ class ResNet(nn.Module):
     def initialiseWeights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.orthogonal_(m.weight)
             elif isinstance(m, nn.BatchNorm2d):
                 nn.init.constant_(m.weight, 1)
                 nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
+
 
     def forward(self, x):
         x = self.conv1(x)
@@ -183,9 +185,8 @@ class ComplexResNet(nn.Module):
     def initialiseWeights(self):
         for m in self.modules():
             if isinstance(m, ComplexConv2d):
-                # Initialize both real and imaginary parts
-                nn.init.kaiming_normal_(m.conv_r.weight, mode='fan_out', nonlinearity='relu')
-                nn.init.kaiming_normal_(m.conv_i.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.orthogonal_(m.conv_r.weight)
+                nn.init.orthogonal_(m.conv_i.weight)
                 if m.conv_r.bias is not None:
                     nn.init.constant_(m.conv_r.bias, 0)
                     nn.init.constant_(m.conv_i.bias, 0)
@@ -200,6 +201,7 @@ class ComplexResNet(nn.Module):
                 else:
                     nn.init.constant_(m.weight, 1)
                     nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
 
     def makeLayer(self, block, outChannels, numBlocks, stride=1):
         downsample = None

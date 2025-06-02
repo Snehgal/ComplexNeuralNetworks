@@ -20,7 +20,18 @@ class LeNet(nn.Module):
         self.fc1 = None  # lazy init
         self.fc2 = nn.Linear(in_features=120, out_features=84)
         self.fc3 = nn.Linear(in_features=84, out_features=num_classes)
+        
+        self.initialiseWeights()
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.orthogonal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
 
+                
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
@@ -61,7 +72,16 @@ class LeNet2x(nn.Module):
         self.fc1 = None  # initialized in first forward pass
         self.fc2 = nn.Linear(fc1_out, fc2_out)
         self.fc3 = nn.Linear(fc2_out, num_classes)
-
+        self.initialiseWeights()
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.orthogonal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
+        
     def forward(self, x):
         x = self.pool(F.relu(self.conv1(x)))
         x = self.pool(F.relu(self.conv2(x)))
@@ -93,7 +113,30 @@ class ComplexLeNet(nn.Module):
         self.fc1_out = 120
         self.fc2 = ComplexLinear(self.fc1_out, 84)
         self.fc3 = ComplexLinear(84, num_classes)
-
+        self.initialiseWeights()    
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, ComplexConv2d):
+                nn.init.orthogonal_(m.conv_r.weight)
+                nn.init.orthogonal_(m.conv_i.weight)
+                if m.conv_r.bias is not None:
+                    nn.init.constant_(m.conv_r.bias, 0)
+                    nn.init.constant_(m.conv_i.bias, 0)
+            elif isinstance(m, ComplexLinear):
+                nn.init.orthogonal_(m.real.weight)
+                nn.init.orthogonal_(m.imag.weight)
+                if m.real.bias is not None:
+                    nn.init.constant_(m.real.bias, 0)
+                    nn.init.constant_(m.imag.bias, 0)
+            elif isinstance(m, ComplexBatchNorm2d):
+                if hasattr(m, 'bn_r') and hasattr(m, 'bn_i'):
+                    nn.init.constant_(m.bn_r.weight, 1)
+                    nn.init.constant_(m.bn_i.weight, 1)
+                    nn.init.constant_(m.bn_r.bias, 0)
+                    nn.init.constant_(m.bn_i.bias, 0)
+        print(f"Model is Orthogonally initialized")
+                    
     def forward(self, x):
         # Ensure input is complex
         x = x.to(torch.complex64) if not x.is_complex() else x
@@ -111,8 +154,6 @@ class ComplexLeNet(nn.Module):
         x = complex_relu(self.fc2(x))
         x = self.fc3(x)
         return x.real  # Return real logits for classification
-
-
 
 
 # CUSTOM CNN
@@ -140,7 +181,16 @@ class CustomCNN(nn.Module):
         self.fc1 = nn.Linear(512 * 1 * 1, 2048)
         self.fc2 = nn.Linear(2048, 512)
         self.fc3 = nn.Linear(512, num_classes)
-
+        self.initialiseWeights()
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.orthogonal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
+        
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.max_pool2d(x, 2)
@@ -185,7 +235,16 @@ class CustomCNN2x(nn.Module):
         self.fc1 = nn.Linear(724 * 1 * 1, 2880)
         self.fc2 = nn.Linear(2880, 720)
         self.fc3 = nn.Linear(720, num_classes)
-
+        self.initialiseWeights()
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, (nn.Conv2d, nn.Linear)):
+                nn.init.orthogonal_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+        print(f"Model is Orthogonally initialized")
+        
     def forward(self, x):
         x = F.relu(self.bn1(self.conv1(x)))
         x = F.max_pool2d(x, 2)
@@ -231,7 +290,31 @@ class ComplexCustomCNN(nn.Module):
 
         # Pooling (still functional is fine)
         self.pool = ComplexMaxPool2d(2)
+        self.initialiseWeights()    
+        
+    def initialiseWeights(self):
+        for m in self.modules():
+            if isinstance(m, ComplexConv2d):
+                nn.init.orthogonal_(m.conv_r.weight)
+                nn.init.orthogonal_(m.conv_i.weight)
+                if m.conv_r.bias is not None:
+                    nn.init.constant_(m.conv_r.bias, 0)
+                    nn.init.constant_(m.conv_i.bias, 0)
+            elif isinstance(m, ComplexLinear):
+                nn.init.orthogonal_(m.real.weight)
+                nn.init.orthogonal_(m.imag.weight)
+                if m.real.bias is not None:
+                    nn.init.constant_(m.real.bias, 0)
+                    nn.init.constant_(m.imag.bias, 0)
+            elif isinstance(m, ComplexBatchNorm2d):
+                if hasattr(m, 'bn_r') and hasattr(m, 'bn_i'):
+                    nn.init.constant_(m.bn_r.weight, 1)
+                    nn.init.constant_(m.bn_i.weight, 1)
+                    nn.init.constant_(m.bn_r.bias, 0)
+                    nn.init.constant_(m.bn_i.bias, 0)
+        print(f"Model is Orthogonally initialized")
 
+        
     def forward(self, x):
         # Ensure complex input
         x = x.type(torch.complex64)
