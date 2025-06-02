@@ -14,7 +14,8 @@ from dataloader import get_dataloader
 # model name(just for printing) and model instance needs to be created while passing params to the function
 def train_model(model_name, model_instance, epochs, learning_rate, dataset="fashion", batch_size=64,
                 val_split=0.1, path=None, complex_data=False, resume=False,
-                plot=True, plot_every=2, optimizer_type="adam", momentum=0.9, T_max=None):
+                plot=True, plot_every=2, optimizer_type="adam", momentum=0.9, T_max=None,
+                save_every=20):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model_instance.to(device)
@@ -130,13 +131,15 @@ def train_model(model_name, model_instance, epochs, learning_rate, dataset="fash
               f"Val Loss: {val_loss:.4f} Acc: {val_acc:.4f}")
 
         # === Save Checkpoints ===
-        torch.save({
-            "epoch": epoch,
-            "model_state": model.state_dict(),
-            "optimizer_state": optimizer.state_dict(),
-            "val_acc": val_acc,
-            "val_loss": val_loss
-        }, checkpoint_path)
+        if (epoch + 1) % save_every == 0:
+            epoch_ckpt_path = os.path.join(save_dir, f"checkpoint_epoch_{epoch + 1}.pt")
+            torch.save({
+                "epoch": epoch,
+                "model_state": model.state_dict(),
+                "optimizer_state": optimizer.state_dict(),
+                "val_acc": val_acc,
+                "val_loss": val_loss
+            }, epoch_ckpt_path)
 
         if val_acc > best_val_acc:
             best_val_acc = val_acc
