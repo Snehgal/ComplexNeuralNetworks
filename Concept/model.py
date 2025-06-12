@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchsummary import summary
-from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear, ComplexMaxPool2d,ComplexAvgPool2d
+from complexPyTorch.complexLayers import ComplexBatchNorm2d, ComplexConv2d, ComplexLinear, ComplexMaxPool2d
 from complexPyTorch.complexFunctions import complex_relu, complex_max_pool2d
 import math
-
+from resnet import PseudoComplexAvgPool2d 
 # LENET
 class LeNet(nn.Module):
     def __init__(self, in_channels=1, num_classes=10):
@@ -156,8 +156,9 @@ class ComplexLeNet(nn.Module):
 
 
 # CUSTOM CNN
+# CUSTOM CNN
 class CustomCNN(nn.Module):
-    def __init__(self, in_channels=3, num_classes=10):
+    def __init__(self, in_channels=3, num_classes=10, drop_out=0.3):
         super(CustomCNN, self).__init__()
 
         # Conv layers (now using in_channels)
@@ -170,16 +171,13 @@ class CustomCNN(nn.Module):
         self.conv3 = nn.Conv2d(128, 256, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(256)
 
-        self.conv4 = nn.Conv2d(256, 512, kernel_size=3, padding=1)
-        self.bn4 = nn.BatchNorm2d(512)
-
         # Adaptive avg pool will reduce to (1,1) no matter the input size
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
 
-        # Fully connected layers
-        self.fc1 = nn.Linear(512 * 1 * 1, 2048)
-        self.fc2 = nn.Linear(2048, 512)
-        self.fc3 = nn.Linear(512, num_classes)
+        # Fully connected layer
+        self.fc = nn.Linear(256, num_classes)
+        self.dropout_conv = nn.Dropout2d(p=drop_out)
+
         self.initialiseWeights()
         
     def initialiseWeights(self):
@@ -198,20 +196,17 @@ class CustomCNN(nn.Module):
         x = F.max_pool2d(x, 2)
 
         x = F.relu(self.bn3(self.conv3(x)))
-        x = F.max_pool2d(x, 2)
+        # Optionally, you can enable dropout here:
+        # x = self.dropout_conv(x)
 
-        x = F.relu(self.bn4(self.conv4(x)))
-        x = self.global_pool(x)  # Output shape: (B, 512, 1, 1)
-
+        x = self.global_pool(x)
         x = torch.flatten(x, 1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc(x)
 
         return x
 
 class CustomCNN2x(nn.Module):
-    def __init__(self, in_channels=3, num_classes=10):
+    def __init__(self, in_channels=3, num_classes=10, drop_out=0.3):
         super(CustomCNN2x, self).__init__()
 
         # Conv layers scaled by √2 (~1.414)
@@ -224,16 +219,10 @@ class CustomCNN2x(nn.Module):
         self.conv3 = nn.Conv2d(181, 362, kernel_size=3, padding=1)
         self.bn3 = nn.BatchNorm2d(362)
 
-        self.conv4 = nn.Conv2d(362, 724, kernel_size=3, padding=1)
-        self.bn4 = nn.BatchNorm2d(724)
-
-        # Adaptive pooling handles variable image sizes
         self.global_pool = nn.AdaptiveAvgPool2d((1, 1))
+        self.fc = nn.Linear(362, num_classes)
+        self.dropout_conv = nn.Dropout2d(p=drop_out)
 
-        # Fully connected layers
-        self.fc1 = nn.Linear(724 * 1 * 1, 2880)
-        self.fc2 = nn.Linear(2880, 720)
-        self.fc3 = nn.Linear(720, num_classes)
         self.initialiseWeights()
         
     def initialiseWeights(self):
@@ -252,25 +241,21 @@ class CustomCNN2x(nn.Module):
         x = F.max_pool2d(x, 2)
 
         x = F.relu(self.bn3(self.conv3(x)))
-        x = F.max_pool2d(x, 2)
+        # Optionally, you can enable dropout here:
+        # x = self.dropout_conv(x)
 
-        x = F.relu(self.bn4(self.conv4(x)))
         x = self.global_pool(x)
-
         x = torch.flatten(x, 1)
-
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.fc(x)
 
         return x
 
 class ComplexCustomCNN(nn.Module):
-    def __init__(self, in_channels=3, num_classes=10):  # ✅ added in_channels
+    def __init__(self, in_channels=3, num_classes=10, drop_out=0.3):
         super(ComplexCustomCNN, self).__init__()
 
         # Complex Conv Layers
-        self.conv1 = ComplexConv2d(in_channels, 64, kernel_size=3, padding=1)  # ✅ use in_channels
+        self.conv1 = ComplexConv2d(in_channels, 64, kernel_size=3, padding=1)
         self.bn1 = ComplexBatchNorm2d(64)
 
         self.conv2 = ComplexConv2d(64, 128, kernel_size=3, padding=1)
@@ -279,17 +264,11 @@ class ComplexCustomCNN(nn.Module):
         self.conv3 = ComplexConv2d(128, 256, kernel_size=3, padding=1)
         self.bn3 = ComplexBatchNorm2d(256)
 
-        self.conv4 = ComplexConv2d(256, 512, kernel_size=3, padding=1)
-        self.bn4 = ComplexBatchNorm2d(512)
+        self.global_pool = PseudoComplexAvgPool2d((1, 1))  # <-- Use this instead of ComplexAvgPool2d
+        self.fc = ComplexLinear(256, num_classes)
+        self.dropout_conv = nn.Dropout2d(p=drop_out)
 
-        # Fully connected layers
-        self.fc1 = ComplexLinear(512 * 1 * 1, 2048)
-        self.fc2 = ComplexLinear(2048, 512)
-        self.fc3 = ComplexLinear(512, num_classes)
-
-        # Pooling (still functional is fine)
-        self.pool = ComplexMaxPool2d(2)
-        self.initialiseWeights()    
+        self.initialiseWeights()       
         
     def initialiseWeights(self):
         for m in self.modules():
@@ -299,9 +278,7 @@ class ComplexCustomCNN(nn.Module):
                 if m.conv_r.bias is not None:
                     nn.init.constant_(m.conv_r.bias, 0)
                     nn.init.constant_(m.conv_i.bias, 0)
-                    
             elif isinstance(m, ComplexBatchNorm2d):
-                # Initialize batch norm parameters
                 if hasattr(m, 'bn_r') and hasattr(m, 'bn_i'):
                     nn.init.constant_(m.bn_r.weight, 1)
                     nn.init.constant_(m.bn_i.weight, 1)
@@ -312,37 +289,22 @@ class ComplexCustomCNN(nn.Module):
                     nn.init.constant_(m.bias, 0)
         print(f"Model is Orthogonally initialized")
 
-        
     def forward(self, x):
-        # Ensure complex input
         x = x.type(torch.complex64)
-
-        # Conv block 1
         x = complex_relu(self.bn1(self.conv1(x)))
         x = complex_max_pool2d(x, kernel_size=2)
 
-        # Conv block 2
         x = complex_relu(self.bn2(self.conv2(x)))
         x = complex_max_pool2d(x, kernel_size=2)
 
-        # Conv block 3
         x = complex_relu(self.bn3(self.conv3(x)))
-        x = complex_max_pool2d(x, kernel_size=2)
+        # Optionally, you can enable dropout here:
+        # x = self.dropout_conv(x.real).type(torch.complex64) + 1j * self.dropout_conv(x.imag).type(torch.complex64)
 
-        # Conv block 4
-        x = complex_relu(self.bn4(self.conv4(x)))
-        x = F.adaptive_avg_pool2d(x, (1, 1))
-
-        # Flatten
+        x = self.global_pool(x)
         x = x.view(x.size(0), -1)
-
-        # Fully connected layers
-        x = complex_relu(self.fc1(x))
-        x = complex_relu(self.fc2(x))
-        x = self.fc3(x)
-
+        x = self.fc(x)
         return x.real  # Return logits (real part)
-
 
 def count_parameters(model,p=True):
     total = sum(p.numel() for p in model.parameters())

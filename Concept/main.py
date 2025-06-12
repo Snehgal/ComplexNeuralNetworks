@@ -115,7 +115,7 @@ def show_images(images, title, is_complex=False):
 
 
 # example
-model = mod.LeNet2x(in_channels=1)  # or 3 for CIFAR
-train_model("LeNet2x", model, epochs=1, learning_rate=0.01, dataset="fashion", complex_data=False)
+# model = mod.LeNet2x(in_channels=1)  # or 3 for CIFAR
+# train_model("LeNet2x", model, epochs=1, learning_rate=0.01, dataset="fashion", complex_data=False)
 
-
+print(mod.count_parameters(res.FashionResNet18(), False))

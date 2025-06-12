@@ -5,7 +5,6 @@ import torch.nn.functional as F
 from complexPyTorch.complexLayers import ComplexLinear, ComplexConv2d, ComplexBatchNorm2d,ComplexReLU,ComplexMaxPool2d,ComplexAvgPool2d
 from complexPyTorch.complexFunctions import complex_relu, complex_max_pool2d, complex_avg_pool2d
 import math
-from model import count_parameters
 
 class PseudoComplexAvgPool2d(nn.Module):
     def __init__(self, output_size=(1, 1)):
@@ -16,6 +15,8 @@ class PseudoComplexAvgPool2d(nn.Module):
         real = self.pool(x.real)
         imag = self.pool(x.imag)
         return torch.complex(real, imag)
+
+from model import count_parameters
 
 # Basic Block for ResNet18,34
 class BasicBlock(nn.Module):
@@ -55,10 +56,9 @@ class ResNet(nn.Module):
 
         # Initial conv now scales with width multiplier
         self.conv1 = nn.Sequential(
-            nn.Conv2d(inChannels, initial_channels, kernel_size=7, stride=2, padding=3, bias=False),
+            nn.Conv2d(inChannels, initial_channels, kernel_size=3, stride=1, padding=1, bias=False),
             nn.BatchNorm2d(initial_channels),
-            nn.ReLU(inplace=True),
-            nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+            nn.ReLU(inplace=True)
         )
 
         self.inChannels = initial_channels
@@ -151,11 +151,6 @@ class ComplexBasicBlock(nn.Module):
 
         return out
 
-def complex_kaiming_normal_(tensor, mode='fan_in'):
-    """Kaiming initialization for complex weights"""
-    nn.init.kaiming_normal_(tensor.real, mode=mode)
-    nn.init.kaiming_normal_(tensor.imag, mode=mode)
-
 class ComplexResNet(nn.Module):
     def __init__(self, block, layers, inChannels=1, numClasses=1000, width_multiplier=1):
         super(ComplexResNet, self).__init__()
@@ -164,10 +159,9 @@ class ComplexResNet(nn.Module):
         initial_channels = int(64 * wm)
 
         self.conv1 = nn.Sequential(
-            ComplexConv2d(inChannels, initial_channels, kernel_size=7, stride=2, padding=3, bias=False),
+            ComplexConv2d(inChannels, initial_channels, kernel_size=3, stride=1, padding=1, bias=False),
             ComplexBatchNorm2d(initial_channels),
-            ComplexReLU(),
-            ComplexMaxPool2d(kernel_size=3, stride=2, padding=1)
+            ComplexReLU()
         )
 
         self.inChannels = initial_channels
@@ -235,7 +229,67 @@ class ComplexResNet(nn.Module):
 
 def ComplexResNet18(numClasses = 10,inChannels = 2):
      return ComplexResNet(ComplexBasicBlock, [2, 2, 2, 2], inChannels, numClasses)
- 
+
+class FashionResNet18(nn.Module):
+    def __init__(self):
+        super(FashionResNet18, self).__init__()
+        self.backbone = ResNet(
+            BasicBlock, [2, 2, 2, 2], inChannels=1, numClasses=10
+        )
+        # Replace initial conv to match FashionMNIST (1 channel, 3x3, stride 1, padding 1)
+        self.backbone.conv1 = nn.Sequential(
+            nn.Conv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(64),
+            nn.ReLU(inplace=True)
+        )
+        # Remove maxpool (not present in your backbone)
+        # Add dropout before FC
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(512, 10)
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
+
+class FashionResNet18x2(nn.Module):
+    def __init__(self):
+        super(FashionResNet18x2, self).__init__()
+        self.backbone = ResNet(
+            BasicBlock, [2, 2, 2, 2], inChannels=1, numClasses=10, width_multiplier=math.sqrt(2)
+        )
+        self.backbone.conv1 = nn.Sequential(
+            nn.Conv2d(1, int(64 * math.sqrt(2)), kernel_size=3, stride=1, padding=1, bias=False),
+            nn.BatchNorm2d(int(64 * math.sqrt(2))),
+            nn.ReLU(inplace=True)
+        )
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            nn.Linear(int(512 * math.sqrt(2)), 10)
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
+
+class ComplexFashionResNet18(nn.Module):
+    def __init__(self):
+        super(ComplexFashionResNet18, self).__init__()
+        self.backbone = ComplexResNet(
+            ComplexBasicBlock, [2, 2, 2, 2], inChannels=1, numClasses=10
+        )
+        self.backbone.conv1 = nn.Sequential(
+            ComplexConv2d(1, 64, kernel_size=3, stride=1, padding=1, bias=False),
+            ComplexBatchNorm2d(64),
+            ComplexReLU()
+        )
+        self.backbone.fc = nn.Sequential(
+            nn.Dropout(0.3),
+            ComplexLinear(512, 10)
+        )
+
+    def forward(self, x):
+        return self.backbone(x)
+    
 def get_model_summary(model, input_size=(2, 224, 224), device='cpu'):
     """
     Get a detailed summary of a model (e.g., ComplexResNet) that accepts complex inputs.
