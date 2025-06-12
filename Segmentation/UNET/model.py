@@ -85,7 +85,7 @@ class ComplexUNet(nn.Module):
         x = self.out_conv(x)
 
 
-    class DoubleConv(nn.Module):
+class DoubleConv(nn.Module):
     def __init__(self, in_ch, out_ch,mid_ch = None):
         super(DoubleConv, self).__init__()
         if mid_ch is None:
