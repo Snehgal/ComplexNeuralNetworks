@@ -114,7 +114,6 @@ class Down(nn.Module):
         x = self.maxpool(x)
         return x
 
-
 class Up(nn.Module):
     def __init__(self, in_channels, out_channels, bilinear=True):
         super(Up, self).__init__()
@@ -165,7 +164,7 @@ class UNet(nn.Module):
         x = self.up4(x,x1)
         x = self.out_conv(x)
         return x
-        return x
+
 model = ComplexUNet()
 print(model)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)

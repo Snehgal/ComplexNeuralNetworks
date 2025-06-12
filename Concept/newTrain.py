@@ -582,6 +582,84 @@ def run_experiment(model_name, save_path, hyperparams, dataset_name):
     })
 
 
+    from torchviz import make_dot
+    import os
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    default_shapes = {
+        "CIFAR10": (1, 3, 32, 32),
+        "FashionMNIST": (1, 1, 28, 28),
+        "ComplexCIFAR10": (1, 3, 32, 32),
+        "ComplexFashionMNIST": (1, 1, 28, 28),
+    }
+    for model_name, model_fn in MODEL_REGISTRY.items():
+        for key in default_shapes:
+            if key in model_name:
+                input_shape = default_shapes[key]
+                break
+        else:
+            input_shape = (1, 3, 32, 32)
+        if input_shapes and model_name in input_shapes:
+            input_shape = input_shapes[model_name]
+        model = model_fn()
+        model.eval()
+        dummy_input = torch.randn(*input_shape)
+        try:
+            output = model(dummy_input)
+            if isinstance(output, (tuple, list)):
+                output = output[0]
+            if torch.is_complex(output):
+                output = output.real
+            dot = make_dot(output, params=dict(model.named_parameters()))
+            dot.format = "png"
+            dot.render(os.path.join(save_dir, f"{model_name}_graph"), cleanup=True)
+            print(f"Saved graph for {model_name} to {save_dir}")
+        except Exception as e:
+            print(f"Could not visualize {model_name}: {e}")
+    """
+    Visualize all models in MODEL_REGISTRY using torchviz.
+    Args:
+        input_shapes (dict): Optional dict mapping model_name to input shape tuple.
+        save_dir (str): Directory to save the generated graphs.
+    """
+    from torchviz import make_dot
+    import os
+
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Default input shapes if not provided
+    default_shapes = {
+        "CIFAR10": (1, 3, 32, 32),
+        "FashionMNIST": (1, 1, 28, 28),
+        "ComplexCIFAR10": (1, 3, 32, 32),
+        "ComplexFashionMNIST": (1, 1, 28, 28),
+    }
+    for model_name, model_fn in MODEL_REGISTRY.items():
+        # Infer dataset type from model name
+        for key in default_shapes:
+            if key in model_name:
+                input_shape = default_shapes[key]
+                break
+        else:
+            input_shape = (1, 3, 32, 32)
+        if input_shapes and model_name in input_shapes:
+            input_shape = input_shapes[model_name]
+        model = model_fn()
+        model.eval()
+        dummy_input = torch.randn(*input_shape)
+        try:
+            output = model(dummy_input)
+            if isinstance(output, (tuple, list)):
+                output = output[0]
+            if torch.is_complex(output):
+                output = output.real
+            dot = make_dot(output, params=dict(model.named_parameters()))
+            dot.format = "png"
+            dot.render(os.path.join(save_dir, f"{model_name}_graph"), cleanup=True)
+            print(f"Saved graph for {model_name} to {save_dir}")
+        except Exception as e:
+            print(f"Could not visualize {model_name}: {e}")
 # =========================
 # Main loop for all experiments
 # =========================
