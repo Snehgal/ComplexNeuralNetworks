@@ -10,7 +10,27 @@ from torchsummary import summary
 techniques to restore the original size of the image, 
 however here, we uses 1 padding so that final feature map is not cropped and
  to eliminate any need to apply post-processing to our output image.'''
+class PseudoComplexAvgPool2d(nn.Module):
+    def __init__(self, kernel_size=None, stride=None, padding=0, ceil_mode=False, count_include_pad=True, output_size=None):
+        super().__init__()
+        if output_size is not None:
+            self.pool = nn.AdaptiveAvgPool2d(output_size)
+        elif kernel_size is not None:
+            self.pool = nn.AvgPool2d(
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=padding,
+                ceil_mode=ceil_mode,
+                count_include_pad=count_include_pad
+            )
+        else:
+            # Default to adaptive pooling if nothing is specified
+            self.pool = nn.AdaptiveAvgPool2d((1, 1))
 
+    def forward(self, x):
+        real = self.pool(x.real)
+        imag = self.pool(x.imag)
+        return torch.complex(real, imag)
 class ComplexDoubleConv(nn.Module):
     def __init__(self, in_ch, out_ch, mid_ch=None):
         super().__init__()
@@ -61,7 +81,7 @@ class ComplexUNet(nn.Module):
         self.down2 = ComplexDoubleConv(64, 128)
         self.down3 = ComplexDoubleConv(128, 256)
         self.down4 = ComplexDoubleConv(256, 512)
-        self.pool = nn.AvgPool2d(kernel_size=2)
+        self.pool = PseudoComplexAvgPool2d(kernel_size=2,stride=2)
         self.bottleneck = ComplexDoubleConv(512, 1024)
         self.up1 = ComplexUp(1024, 512)
         self.up2 = ComplexUp(512, 256)
@@ -77,13 +97,14 @@ class ComplexUNet(nn.Module):
         x3 = self.down3(x)
         x = self.pool(x3)
         x4 = self.down4(x)
+        x = self.pool(x4)
         x = self.bottleneck(x)
         x = self.up1(x, x4)
         x = self.up2(x, x3)
         x = self.up3(x, x2)
         x = self.up4(x, x1)
         x = self.out_conv(x)
-
+        return x.real
 
 class DoubleConv(nn.Module):
     def __init__(self, in_ch, out_ch,mid_ch = None):
@@ -140,7 +161,7 @@ class UNet(nn.Module):
         self.down2 = DoubleConv(64, 128)
         self.down3 = DoubleConv(128, 256)
         self.down4 = DoubleConv(256, 512)
-        self.maxpool = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool = nn.AvgPool2d(kernel_size=2, stride=2)
         self.bottleneck = DoubleConv(512, 1024)
         self.up1 = Up(1024, 512, bilinear=False)
         self.up2 = Up(512, 256, bilinear=False)
@@ -150,13 +171,13 @@ class UNet(nn.Module):
 
     def forward(self, x):
         x1 = self.down1(x)
-        x = self.maxpool(x1)
+        x = self.pool(x1)
         x2 = self.down2(x)
-        x = self.maxpool(x2)
+        x = self.pool(x2)
         x3 = self.down3(x)
-        x = self.maxpool(x3)
+        x = self.pool(x3)
         x4 = self.down4(x)
-        x = self.maxpool(x4)
+        x = self.pool(x4)
         x = self.bottleneck(x)
         x = self.up1(x,x4)
         x = self.up2(x,x3)
@@ -164,8 +185,42 @@ class UNet(nn.Module):
         x = self.up4(x,x1)
         x = self.out_conv(x)
         return x
+def testUnet(complex = False):
 
-model = ComplexUNet()
+
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    if complex:
+        real = torch.randn(2, 3, 128, 128)
+        imag = torch.randn(2, 3, 128, 128)
+        dummy_input = torch.complex(real, imag)
+        model = ComplexUNet(n_channels=3, n_classes=5).to(device)
+    else:
+        dummy_input = torch.randn(2, 3, 128, 128)
+        model = UNet(n_channels=3, n_classes=5).to(device)
+
+
+
+    # Forward pass
+    output = model(dummy_input)
+
+    # Dummy target with same shape
+    target = torch.randn_like(output)
+
+    # Loss (MSE for simplicity)
+    criterion = nn.MSELoss()
+    loss = criterion(output, target)
+
+    # Backward pass
+    loss.backward()
+
+    print("✅ Forward and backward pass completed successfully.")
+    print(f"Output shape: {output.shape}")
+    print(f"Loss: {loss.item():.4f}")
+
+# Run the test
+testUnet()
+
+'''model = ComplexUNet()
 print(model)
 total_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-print(f"Total trainable parameters: {total_params}")
+print(f"Total trainable parameters: {total_params}")'''
