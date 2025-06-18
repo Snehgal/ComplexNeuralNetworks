@@ -13,10 +13,10 @@ import sys
 file_path = "sassed.h5"
 PATCH_SIZE = 128
 UNUSED_CLASS = 8
-STRIDE = 1
+STRIDE = 8
 N_FOLDS = 5
 
-PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), "preprocessed")
+PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), "preprocessed-stride-8")
 os.makedirs(PREPROCESSED_DIR, exist_ok=True)
 PREPROCESSED_FILE = os.path.join(
     PREPROCESSED_DIR,
@@ -178,6 +178,8 @@ def get_fold_dataloader(
     pin_memory=True,
     preload_ram=False
 ):
+    print("Getting data from:", PREPROCESSED_DIR)
+    print("Workers: ", num_workers)
     all_indices, all_dominant_labels, n_images = prepare_patch_data()
     skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
     splits = list(skf.split(np.arange(len(all_indices)), all_dominant_labels))
