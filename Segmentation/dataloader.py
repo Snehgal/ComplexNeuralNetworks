@@ -23,6 +23,43 @@ PREPROCESSED_FILE = os.path.join(
     f"patches_ps{PATCH_SIZE}_stride{STRIDE}_unused{UNUSED_CLASS}_fast.npz"
 )
 
+import h5py
+import numpy as np
+from collections import Counter
+
+def find_unused_class(h5_path, dataset_key='segments'):
+    """
+    Automatically determines an unused class label.
+    If all existing labels are used, returns (max_class + 1) as unused.
+
+    Args:
+        h5_path (str): Path to the HDF5 file.
+        dataset_key (str): Key of the segmentation dataset in the HDF5 file.
+
+    Returns:
+        Tuple[int, int]: (unused_class, max_class + 1)
+    """
+    with h5py.File(h5_path, 'r') as f:
+        masks = f[dataset_key][:]
+    flat = masks.flatten()
+    unique_labels = np.unique(flat)
+    label_set = set(unique_labels)
+
+    max_class = int(unique_labels.max())
+    for c in range(max_class + 1):
+        if c not in label_set:
+            print(f"✅ Found unused class label: {c}")
+            return c, max_class + 1
+
+    # Fallback: all classes 0..max_class used → return max_class + 1
+    unused_class = max_class + 1
+    print(f"⚠️ All classes from 0 to {max_class} are used. Returning {unused_class} as unused class.")
+    return unused_class, unused_class + 1
+
+UNUSED_CLASS, NUM_CLASSES = find_unused_class(file_path)
+print(f"Using UNUSED_CLASS = {UNUSED_CLASS}")
+print(f"NUM_CLASSES = {NUM_CLASSES}")  # useful for defining model output size
+
 def extract_patches(img, mask, patch_size=PATCH_SIZE, stride=STRIDE, unused_class=UNUSED_CLASS):
     h, w = img.shape
     patches = []

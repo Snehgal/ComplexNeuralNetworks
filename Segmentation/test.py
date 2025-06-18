@@ -27,7 +27,7 @@ if __name__ == "__main__":
     train_loader = get_fold_dataloader(
         fold=0,
         split='train',
-        batch_size=4,
+        batch_size=64,
         num_workers=0,
         transform=transform,
         target_transform=None,
@@ -54,5 +54,5 @@ if __name__ == "__main__":
         loss.backward()
         optimizer.step()
         print(f"Batch {batch_idx}: Loss = {loss.item():.4f}")
-        if batch_idx >= 2:  # Just run a few batches for demonstration
-            break
+        # if batch_idx >= 2:  # Just run a few batches for demonstration
+        #     break
