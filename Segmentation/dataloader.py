@@ -12,79 +12,50 @@ import sys
 
 file_path = "sassed.h5"
 PATCH_SIZE = 128
-UNUSED_CLASS = 8
 STRIDE = 8
 N_FOLDS = 5
+NUM_CLASSES = 9
 
 PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), "preprocessed-stride-8")
 os.makedirs(PREPROCESSED_DIR, exist_ok=True)
 PREPROCESSED_FILE = os.path.join(
     PREPROCESSED_DIR,
-    f"patches_ps{PATCH_SIZE}_stride{STRIDE}_unused{UNUSED_CLASS}_fast.npz"
+    f"patches_ps{PATCH_SIZE}_stride{STRIDE}_fast.npz"
 )
 
 import h5py
 import numpy as np
 from collections import Counter
 
-def find_unused_class(h5_path, dataset_key='segments'):
-    """
-    Automatically determines an unused class label.
-    If all existing labels are used, returns (max_class + 1) as unused.
-
-    Args:
-        h5_path (str): Path to the HDF5 file.
-        dataset_key (str): Key of the segmentation dataset in the HDF5 file.
-
-    Returns:
-        Tuple[int, int]: (unused_class, max_class + 1)
-    """
-    with h5py.File(h5_path, 'r') as f:
-        masks = f[dataset_key][:]
-    flat = masks.flatten()
-    unique_labels = np.unique(flat)
-    label_set = set(unique_labels)
-
-    max_class = int(unique_labels.max())
-    for c in range(max_class + 1):
-        if c not in label_set:
-            print(f"✅ Found unused class label: {c}")
-            return c, max_class + 1
-
-    # Fallback: all classes 0..max_class used → return max_class + 1
-    unused_class = max_class + 1
-    print(f"⚠️ All classes from 0 to {max_class} are used. Returning {unused_class} as unused class.")
-    return unused_class, unused_class + 1
-
-UNUSED_CLASS, NUM_CLASSES = find_unused_class(file_path)
-print(f"Using UNUSED_CLASS = {UNUSED_CLASS}")
 print(f"NUM_CLASSES = {NUM_CLASSES}")  # useful for defining model output size
 
-def extract_patches(img, mask, patch_size=PATCH_SIZE, stride=STRIDE, unused_class=UNUSED_CLASS):
+def extract_patches(img, mask, patch_size=PATCH_SIZE, stride=STRIDE):
+    # Truncate image/mask to 1000x1000 if necessary
     h, w = img.shape
+    h = min(h, 1000)
+    w = min(w, 1000)
+    h = h - (h % stride)
+    w = w - (w % stride)
+    img = img[:h, :w]
+    mask = mask[:h, :w]
+
     patches = []
     mask_patches = []
-    for i in range(0, h, stride):
-        for j in range(0, w, stride):
+
+    for i in range(0, h - patch_size + 1, stride):
+        for j in range(0, w - patch_size + 1, stride):
             img_patch = img[i:i+patch_size, j:j+patch_size]
             mask_patch = mask[i:i+patch_size, j:j+patch_size]
-            # Pad if patch is smaller than patch_size (bottom/right edges)
-            if img_patch.shape != (patch_size, patch_size):
-                pad_h = patch_size - img_patch.shape[0]
-                pad_w = patch_size - img_patch.shape[1]
-                img_patch = np.pad(img_patch, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=0)
-                mask_patch = np.pad(mask_patch, ((0, pad_h), (0, pad_w)), mode='constant', constant_values=unused_class)
             patches.append(img_patch)
             mask_patches.append(mask_patch)
+
     return patches, mask_patches
 
-def dominant_label(mask_patch, unused_class=UNUSED_CLASS):
+
+def dominant_label(mask_patch):
     vals, counts = np.unique(mask_patch, return_counts=True)
-    valid = vals != unused_class
-    if np.any(valid):
-        vals = vals[valid]
-        counts = counts[valid]
     return vals[np.argmax(counts)]
+
 
 def process_image(idx, img, mask):
     try:
@@ -100,10 +71,9 @@ def process_image(idx, img, mask):
         traceback.print_exc()
         return [], [], []
 
-# ...existing code...
 
 def per_image_patch_file(idx):
-    return os.path.join(PREPROCESSED_DIR, f"patches_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}_unused{UNUSED_CLASS}.npz")
+    return os.path.join(PREPROCESSED_DIR, f"patches_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}.npz")
 
 def process_and_save_image(idx, img, mask):
     try:
@@ -240,7 +210,6 @@ def get_fold_dataloader(
     )
     return loader
 
-# ...rest of the code...
 # Example usage in another file:
 # from ComplexNeuralNetworks.Segmentation.dataloader import get_fold_dataloader
 # train_loader = get_fold_dataloader(fold=0, split='train', batch_size=32)
