@@ -16,10 +16,17 @@ import multiprocessing as mp
 
 file_path = "sassed_V4.h5"
 PATCH_SIZE = 128
+<<<<<<< HEAD
 STRIDE = 64
 N_FOLDS = 5
 NUM_CLASSES = 9
 PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), f"preprocessed-{STRIDE}")
+=======
+STRIDE = 32
+N_FOLDS = 5
+NUM_CLASSES = 9
+PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), f"preprocessed-speed-optimized-{STRIDE}")
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 os.makedirs(PREPROCESSED_DIR, exist_ok=True)
 
 # Use uncompressed formats for speed
@@ -83,6 +90,7 @@ def save_fold_dataset(fold=0, split='train'):
     
     print(f"[OK] Saved {split}_fold{fold} with {len(patches)} patches")
 
+<<<<<<< HEAD
 def save_complex_fold_dataset(fold=0, split='train'):
     """Save complex-valued fold dataset using .npy for speed"""
     all_indices, all_dominant_labels, _ = prepare_patch_data()
@@ -122,6 +130,8 @@ def save_complex_fold_dataset(fold=0, split='train'):
 
     print(f"[OK] Saved COMPLEX {split}_fold{fold} with {len(complex_patches)} patches")
 
+=======
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 def save_all_folds():
     """Generate all folds with parallel processing"""
     with ThreadPoolExecutor(max_workers=min(4, N_FOLDS * 2)) as executor:
@@ -189,21 +199,28 @@ def per_image_mask_file(idx):
 def per_image_meta_file(idx):
     return os.path.join(PREPROCESSED_DIR, f"meta_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}.pkl")
 
+<<<<<<< HEAD
 def per_image_complex_patch_file(idx):
     return os.path.join(PREPROCESSED_DIR, f"patches_complex_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}.npy")
 
 def fold_complex_patch_file(fold, split):
     return os.path.join(PREPROCESSED_DIR, f"{split}_fold{fold}_complex_patches.npy")
 
+=======
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 def process_and_save_image_optimized(idx, img, mask):
     """Optimized processing with separate files for different data types"""
     try:
         patches, mask_patches = extract_patches_vectorized(img, mask)
         dominant_labels = dominant_label_vectorized(mask_patches)
+<<<<<<< HEAD
         # Save complex patches as a single-channel complex64 array
         complex_patches = patches[:, 0] + 1j * patches[:, 1]
         np.save(per_image_complex_patch_file(idx), complex_patches)
 
+=======
+        
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
         # Save as separate uncompressed .npy files for speed
         np.save(per_image_patch_file(idx), patches)
         np.save(per_image_mask_file(idx), mask_patches)
@@ -311,6 +328,7 @@ class MemoryMappedFoldDataset(Dataset):
             
         return patch, mask
 
+<<<<<<< HEAD
 class ComplexMemoryMappedDataset(Dataset):
     """Memory-mapped complex dataset for ultra-fast access"""
     def __init__(self, fold, split, transform=None, target_transform=None):
@@ -349,6 +367,8 @@ class ComplexMemoryMappedDataset(Dataset):
 
 
 
+=======
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 class PreloadedRAMDataset(Dataset):
     """Fully preloaded dataset in RAM for maximum speed"""
     def __init__(self, fold, split, transform=None, target_transform=None):
@@ -422,6 +442,7 @@ def get_fold_dataloader(
         persistent_workers=(num_workers > 0),
         prefetch_factor=prefetch_factor if num_workers > 0 else None,
         drop_last=(split == 'train')  # Drop last incomplete batch for training
+<<<<<<< HEAD
     )
 
 def get_complex_fold_dataloader(
@@ -449,3 +470,45 @@ def get_complex_fold_dataloader(
         drop_last=(split == 'train')
     )
 
+=======
+    )
+
+# Utility functions for performance monitoring
+def benchmark_loading_speed(fold=0, split='train', batch_size=32, num_batches=10):
+    """Benchmark data loading speed"""
+    import time
+    
+    print(f"\n=== Benchmarking {split}_fold{fold} ===")
+    
+    # Test memory-mapped version
+    start_time = time.time()
+    loader_mmap = get_fold_dataloader(fold, split, batch_size, preload_ram=False)
+    setup_time_mmap = time.time() - start_time
+    
+    start_time = time.time()
+    for i, (patches, masks) in enumerate(loader_mmap):
+        if i >= num_batches:
+            break
+    loading_time_mmap = time.time() - start_time
+    
+    # Test RAM version
+    start_time = time.time()
+    loader_ram = get_fold_dataloader(fold, split, batch_size, preload_ram=True)
+    setup_time_ram = time.time() - start_time
+    
+    start_time = time.time()
+    for i, (patches, masks) in enumerate(loader_ram):
+        if i >= num_batches:
+            break
+    loading_time_ram = time.time() - start_time
+    
+    print(f"Memory-mapped: Setup {setup_time_mmap:.2f}s, Loading {loading_time_mmap:.2f}s")
+    print(f"RAM preloaded: Setup {setup_time_ram:.2f}s, Loading {loading_time_ram:.2f}s")
+    print(f"Speed improvement: {loading_time_mmap/loading_time_ram:.2f}x faster with RAM preloading")
+
+if __name__ == "__main__":
+    # Example usage
+    print("Speed-optimized data loader initialized")
+    # Uncomment to run benchmark
+#     benchmark_loading_speed()
+>>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
