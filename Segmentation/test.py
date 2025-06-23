@@ -1,58 +1,98 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torchvision import transforms
-from dataloader import get_fold_dataloader
+from tqdm import tqdm
+import os
+import sys
+import time
 
-# Simple normalization transform for 2-channel input
+from model_unet import UNet, ComplexUNet
+from ComplexNeuralNetworks.Segmentation.updatedDataloader import get_fold_dataloader, get_complex_fold_dataloader
+
 class SimpleNorm(object):
     def __call__(self, x):
-        # x: Tensor of shape (2, H, W)
         return (x - x.mean()) / (x.std() + 1e-6)
 
-# Simplest model: 1 conv layer, output 1 channel (for demonstration)
-class SimpleModel(nn.Module):
-    def __init__(self):
-        super().__init__()
-        self.conv = nn.Conv2d(2, 1, kernel_size=3, padding=1)
-    def forward(self, x):
-        return self.conv(x)
+def train_model(num_epochs=5, num_classes=9, n_out=32, batch_size=16, nw=4, complex_mode=False):
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    print("training on:", device)
+
+    for fold in range(3):
+        print(f"\n========== Fold {fold} ==========")
+        if complex_mode:
+            model = ComplexUNet(n_channels=1, n_classes=num_classes, n_out_channels=n_out).to(device)
+            loader_fn = get_complex_fold_dataloader
+        else:
+            model = UNet(n_channels=2, n_classes=num_classes, n_out_channels=n_out).to(device)
+            loader_fn = get_fold_dataloader
+
+        optimizer = optim.Adam(model.parameters(), lr=1e-3)
+        criterion = nn.CrossEntropyLoss()
+
+        train_loader = loader_fn(
+            fold_dir=f"fold_{fold}",
+            split='train',
+            batch_size=batch_size,
+            num_workers=nw,
+            transform=SimpleNorm(),
+            out_root="preprocessed_random"
+        )
+        val_loader = loader_fn(
+            fold_dir=f"fold_{fold}",
+            split='val',
+            batch_size=batch_size,
+            num_workers=nw,
+            transform=SimpleNorm(),
+            out_root="preprocessed_random"
+        )
+
+        for epoch in range(1, num_epochs + 1):
+            print(f"\n[Epoch {epoch}/{num_epochs}]")
+            model.train()
+            total_train_loss = 0
+            t0 = time.time()
+            for inputs, targets in tqdm(train_loader, desc="Training", leave=True):
+                inputs, targets = inputs.to(device), targets.to(device)
+                if complex_mode and inputs.ndim == 3:
+                    inputs = inputs.unsqueeze(1)  # [B, 1, H, W] complex
+                if targets.ndim == 4 and targets.shape[1] == 1:
+                    targets = targets[:, 0, :, :]
+                targets = targets.long()
+                optimizer.zero_grad()
+                outputs = model(inputs)
+                loss = criterion(outputs, targets)
+                loss.backward()
+                optimizer.step()
+                total_train_loss += loss.item()
+            avg_train_loss = total_train_loss / len(train_loader)
+            t1 = time.time()
+            print(f"Train Loss: {avg_train_loss:.4f} | Time: {t1-t0:.2f}s")
+
+            # ---------- Validation ----------
+            model.eval()
+            total_val_loss = 0
+            with torch.no_grad():
+                for inputs, targets in tqdm(val_loader, desc="Validation", leave=True):
+                    inputs, targets = inputs.to(device), targets.to(device)
+                    if complex_mode and inputs.ndim == 3:
+                        inputs = inputs.unsqueeze(1)
+                    if targets.ndim == 4 and targets.shape[1] == 1:
+                        targets = targets[:, 0, :, :]
+                    targets = targets.long()
+                    outputs = model(inputs)
+                    loss = criterion(outputs, targets)
+                    total_val_loss += loss.item()
+            avg_val_loss = total_val_loss / len(val_loader)
+            print(f"Val   Loss: {avg_val_loss:.4f}")
+            
+            del train_loader
+            del val_loader
+            torch.cuda.empty_cache()
+            import gc
+            gc.collect()
 
 if __name__ == "__main__":
-    # Use CPU for simplicity
-    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-    # Get DataLoader with transforms
-    transform = SimpleNorm()
-    train_loader = get_fold_dataloader(
-        fold=0,
-        split='train',
-        batch_size=64,
-        num_workers=0,
-        transform=transform,
-        target_transform=None,
-        shuffle=True,
-        pin_memory=False
-    )
-
-    # Instantiate model, loss, optimizer
-    model = SimpleModel().to(device)
-    criterion = nn.MSELoss()  # For demonstration; use appropriate loss for your task
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
-
-    # Run one epoch
-    model.train()
-    for batch_idx, (inputs, masks) in enumerate(train_loader):
-        inputs = inputs.to(device, dtype=torch.float32)
-        masks = masks.to(device, dtype=torch.float32).unsqueeze(1)  # (B, 1, H, W)
-        optimizer.zero_grad()
-        outputs = model(inputs)
-        # Resize masks if needed to match outputs
-        if outputs.shape != masks.shape:
-            masks = masks[:, :, :outputs.shape[2], :outputs.shape[3]]
-        loss = criterion(outputs, masks)
-        loss.backward()
-        optimizer.step()
-        print(f"Batch {batch_idx}: Loss = {loss.item():.4f}")
-        # if batch_idx >= 2:  # Just run a few batches for demonstration
-        #     break
+    # Train real-valued UNet on all folds
+    train_model(num_epochs=2, num_classes=9, n_out=16, batch_size=16, nw=8, complex_mode=False)
+    # Train complex-valued ComplexUNet on all folds
+    train_model(num_epochs=2, num_classes=9, n_out=16, batch_size=16, nw=8, complex_mode=True)
