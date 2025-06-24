@@ -31,6 +31,40 @@ def preprocess_stride_pipeline(h5_file, patch_sizes, steps, out_root, mode="real
     stratify_labels = np.array([np.bincount(mask.flatten()).argmax() for mask in masks])
     folds, test_idx = split_indices(len(images), stratify_labels)
     stats = {}
+
+    # --- Save full test images (not patches) ---
+    # Save for both real and complex modes
+    for save_mode in ["real", "complex"]:
+        test_dir = os.path.join(out_root, save_mode, "test")
+        os.makedirs(test_dir, exist_ok=True)
+        test_imgs = []
+        for img in images[test_idx]:
+            if save_mode == "real":
+                # Convert to 2 channels: [real, imag=0], float32
+                if np.iscomplexobj(img):
+                    img = np.stack([img.real, img.imag], axis=-1)
+                elif img.ndim == 2:
+                    img = np.stack([img, np.zeros_like(img)], axis=-1)
+                elif img.ndim == 3 and img.shape[-1] == 1:
+                    img = np.concatenate([img, np.zeros_like(img)], axis=-1)
+                elif img.ndim == 3 and img.shape[-1] == 2:
+                    pass  # already 2 channels
+                img = img.astype(np.float32)
+            else:  # complex
+                if not np.iscomplexobj(img):
+                    img = img.astype(np.complex64)
+                img = np.squeeze(img)
+            test_imgs.append(img)
+        test_imgs = np.stack(test_imgs)
+        test_masks = masks[test_idx].astype(np.uint8)
+        # Save
+        if save_mode == "real":
+            np.save(os.path.join(test_dir, "test_images.npy"), test_imgs)
+        else:
+            np.save(os.path.join(test_dir, "test_images_complex.npy"), test_imgs)
+        np.save(os.path.join(test_dir, "test_masks.npy"), test_masks)
+
+    # --- Existing patch extraction code below ---
     for patch_size, step in zip(patch_sizes, steps):
         patch_dir = os.path.join(out_root, mode, f"patch_{patch_size}")
         for fold_num, (train_idx, val_idx) in enumerate(folds):
