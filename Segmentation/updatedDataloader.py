@@ -199,7 +199,8 @@ class MemoryMappedPatchDataset(Dataset):
                 patch = patch[..., 0] + 1j * patch[..., 1]
             elif patch.ndim == 2:
                 patch = patch.astype(np.complex64)
-            patch = torch.from_numpy(patch).to(torch.complex64)
+            patch = torch.from_numpy(patch).to(torch.complex64)  # shape [H, W]
+            patch = patch.unsqueeze(0)  # shape [1, H, W]
         else:
             # Always return [2, H, W] float32: [real, imag]
             if patch.ndim == 3 and patch.shape[-1] == 2:
@@ -214,7 +215,7 @@ class MemoryMappedPatchDataset(Dataset):
                 imag = np.zeros_like(real)
                 patch = np.stack([real, imag], axis=0)
             patch = torch.from_numpy(patch).float()
-        mask = torch.from_numpy(self.masks[idx])
+        mask = torch.from_numpy(self.masks[idx].copy())
         if self.transform:
             patch = self.transform(patch)
         if self.target_transform:

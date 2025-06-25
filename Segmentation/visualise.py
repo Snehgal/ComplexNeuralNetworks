@@ -4,7 +4,7 @@ import torch
 import numpy as np
 import pickle
 from tqdm import tqdm
-from model_unet import UNet
+from model_unet import UNet,ComplexUNet
 from patchify import patchify, unpatchify
 import matplotlib.pyplot as plt
 import random
@@ -196,8 +196,8 @@ def evaluate_on_test_for_all_checkpoints(patch_size, out_root="preprocessed_rand
 
 def evaluate_on_full_test_images(
     checkpoint_path,
-    test_images_path="preprocessed_stride/real/test/test_images.npy",
-    test_masks_path="preprocessed_stride/real/test/test_masks.npy",
+    test_images_path="dataset/real/test/test_images.npy",
+    test_masks_path="dataset/real/test/test_masks.npy",
     patch_size=64,
     device="cuda"
 ):
@@ -215,7 +215,7 @@ def evaluate_on_full_test_images(
     if patch_size in PATCH_SIZES:
         step = PATCH_STEPS[PATCH_SIZES.index(patch_size)]
     else:
-        step = 1 if patch_size >= 1000 else patch_size
+        step = 1 if patch_size >= 512 else patch_size
 
     # Load model
     model = UNet(n_channels=2, n_classes=9, n_out_channels=16).to(device)
@@ -271,7 +271,84 @@ def evaluate_on_full_test_images(
     print(f"  Mean MIoU={mean_miou:.4f}")
     print(f"  Class-wise Pixel Accuracy: {mean_class_accs}")
 
-def main():
+def evaluate_on_full_test_images_complex(
+    checkpoint_path,
+    test_images_path="dataset/complex/test/test_images.npy",
+    test_masks_path="dataset/complex/test/test_masks.npy",
+    patch_size=64,
+    device="cuda"
+):
+    # Load test images and masks
+    test_images = np.load(test_images_path)  # [N, H, W] complex64
+    test_masks = np.load(test_masks_path)    # [N, H, W]
+    n_images = test_images.shape[0]
+
+    PATCH_SIZES = [32, 64, 96, 128]
+    PATCH_STEPS = [32, 64, 96, 128]
+    if patch_size == 0:
+        patch_size = random.choice(PATCH_SIZES)
+        print(f"Randomly selected patch size: {patch_size}")
+    if patch_size in PATCH_SIZES:
+        step = PATCH_STEPS[PATCH_SIZES.index(patch_size)]
+    else:
+        step = 1 if patch_size >= 512 else patch_size
+
+    # Load model
+    model = ComplexUNet(n_channels=1, n_classes=9, n_out_channels=16).to(device)
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    num_classes = 9  # Set this to your number of classes
+    all_mious = []
+    all_class_accs = []
+    all_metrics = []
+    for img_idx in range(n_images):
+        img = test_images[img_idx]  # [H, W] complex64
+        mask = test_masks[img_idx]  # [H, W]
+        orig_shape = img.shape[:2]
+
+        # Patchify image and mask (for complex: keep as [H, W])
+        patches = patchify(img, (patch_size, patch_size), step=step)
+        patches = patches.reshape(-1, patch_size, patch_size)  # [N, patch_size, patch_size]
+        mask_patches = patchify(mask, (patch_size, patch_size), step=step)
+        mask_patches = mask_patches.reshape(-1, patch_size, patch_size)
+        preds = []
+         # Prepare input for model: [N, 1, patch_size, patch_size], dtype complex64
+        img_patches_torch = torch.from_numpy(patches).to(torch.complex64).unsqueeze(1).to(device)  # [N, 1, H, W]
+        with torch.no_grad():
+            for i in range(0, len(img_patches_torch), 1):  # batch size 1 for safety
+                batch = img_patches_torch[i:i+1]
+                out = model(batch)
+                pred = torch.argmax(out, dim=1).cpu().numpy()
+                preds.append(pred)
+                torch.cuda.empty_cache()
+        preds = np.concatenate(preds, axis=0)  # [N_patches, patch_size, patch_size]
+
+        # Depatchify
+        pred_full = depatchify_patches(preds, orig_shape, patch_size, step)
+        mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, step)
+
+        # Visualize using magnitude
+        img_magnitude = np.abs(img)
+        visualize_prediction(img_magnitude, mask_full, pred_full, idx=img_idx)
+        pa = np.mean(pred_full == mask_full)
+        miou, class_ious = compute_miou(pred_full, mask_full, num_classes)
+        class_accs = compute_classwise_pixel_accuracy(pred_full, mask_full, num_classes)
+        all_metrics.append(pa)
+        all_mious.append(miou)
+        all_class_accs.append(class_accs)
+        print(f"Test image {img_idx}: Pixel Accuracy={pa:.4f}, MIoU={miou:.4f}")
+
+    mean_pa = np.mean(all_metrics)
+    mean_miou = np.nanmean(all_mious)
+    mean_class_accs = np.nanmean(np.array(all_class_accs), axis=0)
+    print(f"Checkpoint {os.path.basename(checkpoint_path)}, Patch size {patch_size}:")
+    print(f"  Mean Pixel Accuracy={mean_pa:.4f}")
+    print(f"  Mean MIoU={mean_miou:.4f}")
+    print(f"  Class-wise Pixel Accuracy: {mean_class_accs}")
+
+def real():
     device = "cuda" if torch.cuda.is_available() else "cpu"
     checkpoint_dir = r"checkpoints_stride-64_16-out_modified(wt. loss + sgd(0.1lr)) [best perf on old dice loss]/best2"
     checkpoint_dir = os.path.abspath(checkpoint_dir)
@@ -280,7 +357,7 @@ def main():
     checkpoint_files = sorted(glob.glob(pattern))
     print(f"Found {len(checkpoint_files)} checkpoints.")
 
-    for patch_size in [1000,128, 0]:  # 0 means random
+    for patch_size in [992,128, 0]:  # 0 means random
         for checkpoint_path in checkpoint_files:
             print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
             evaluate_on_full_test_images(
@@ -295,3 +372,41 @@ def main():
     #     print(f"\nEvaluating all checkpoints for patch size {patch_size}")
     #     evaluate_on_test_for_all_checkpoints(patch_size, out_root="preprocessed_random", checkpoint_dir=r"checkpoints_stride-64_16-out_modified(wt. loss + sgd(0.1lr)) [best perf on old dice loss]", device=device)
     
+def complex():
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    checkpoint_dir = r"checkpoints_stride-64_16-out_modified(wt. loss + sgd(0.1lr)) [best perf on old dice loss]/best2"
+    checkpoint_dir = os.path.abspath(checkpoint_dir)
+    pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+    print("Looking for files with pattern:", pattern)
+    checkpoint_files = sorted(glob.glob(pattern))
+    print(f"Found {len(checkpoint_files)} checkpoints.")
+
+    for patch_size in [992,128]:  # 0 means random
+        for checkpoint_path in checkpoint_files:
+            print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+            evaluate_on_full_test_images_complex(
+                checkpoint_path=checkpoint_path,
+                test_images_path="dataset/complex/test/test_images.npy",
+                test_masks_path="dataset/complex/test/test_masks.npy",
+                patch_size=patch_size,
+                device=device
+            )
+
+device = "cuda" if torch.cuda.is_available() else "cpu"
+checkpoint_dir = r"checkpoints_stride-64_16-out_modified-complex(wt. loss(dice=0.5) + sgd(0.1lr)/best"
+checkpoint_dir = os.path.abspath(checkpoint_dir)
+pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+print("Looking for files with pattern:", pattern)
+checkpoint_files = sorted(glob.glob(pattern))
+print(f"Found {len(checkpoint_files)} checkpoints.")
+
+for patch_size in [992,128]:  # 0 means random
+    for checkpoint_path in checkpoint_files:
+        print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+        evaluate_on_full_test_images_complex(
+            checkpoint_path=checkpoint_path,
+            test_images_path="dataset/complex/test/test_images_complex.npy",
+            test_masks_path="dataset/complex/test/test_masks.npy",
+            patch_size=patch_size,
+            device=device
+        )
