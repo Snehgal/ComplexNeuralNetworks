@@ -1,3 +1,4 @@
+# How to run a Kubernetes instance for Jupyter Lab 
 ### In your home directory (default when starting cluster) do the following:
 ```bash
 mkdir JupLab
