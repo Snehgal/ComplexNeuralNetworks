@@ -190,5 +190,3 @@ def train_modelComplex(num_epochs=25, plot_every=5, num_classes=3, n_out=32, sav
         torch.cuda.empty_cache()
         import gc
         gc.collect()
-train_modelComplex(num_epochs=2, plot_every=25, num_classes=9, n_out=16, save_every=20,
-                checkpoint_dir='ComplexTest', nw=8, w1_=0.5, w2_=0.5,t_max = 200,lr = 0.1)

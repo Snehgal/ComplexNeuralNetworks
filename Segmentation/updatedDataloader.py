@@ -11,8 +11,8 @@ import random
 from tqdm import tqdm
 import time
 
-PATCH_SIZES = [32, 64, 96, 128]
-PATCH_STEPS = [32]*len(PATCH_SIZES)
+PATCH_SIZES = [96, 128, 160, 256]
+PATCH_STEPS = [64,96,128,160]
 
 H5_FILE = "sassed_V4.h5"
 
