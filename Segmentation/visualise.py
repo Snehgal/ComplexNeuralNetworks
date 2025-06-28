@@ -415,6 +415,275 @@ def complex():
                 device=device
             )
 
+def evaluate_checkpoint_without_visualization(
+    checkpoint_path,
+    test_images_path,
+    test_masks_path,
+    patch_size=992,
+    device="cuda",
+    model_type="real",
+    n_out=16
+):
+    """Evaluate a checkpoint without visualization, return metrics only"""
+    
+    # Load test images and masks
+    test_images = np.load(test_images_path)
+    test_masks = np.load(test_masks_path)
+    n_images = test_images.shape[0]
+    
+    # Handle step calculation
+    if patch_size in PATCH_SIZES:
+        step = PATCH_STEPS[PATCH_SIZES.index(patch_size)]
+    else:
+        step = 1 if patch_size >= 1000 else patch_size
+    
+    # Load model based on type
+    if model_type == "real":
+        model = UNet(n_channels=2, n_classes=9, n_out_channels=n_out).to(device)
+    else:  # complex
+        model = ComplexUNet(n_channels=1, n_classes=9, n_out_channels=n_out).to(device)
+    
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    model.load_state_dict(checkpoint["model_state"])
+    model.eval()
+    
+    num_classes = 9
+    all_mious = []
+    all_class_accs = []
+    all_metrics = []
+    
+    for img_idx in range(n_images):
+        if model_type == "real":
+            img = test_images[img_idx]  # [H, W, 2]
+            patches = patchify(img, (patch_size, patch_size, 2), step=step)
+            patches = patches.reshape(-1, patch_size, patch_size, 2)
+            img_patches_torch = torch.from_numpy(np.transpose(patches, (0,3,1,2))).float().to(device)
+            batch_size = 32
+        else:  # complex
+            img = test_images[img_idx]  # [H, W] complex64
+            patches = patchify(img, (patch_size, patch_size), step=step)
+            patches = patches.reshape(-1, patch_size, patch_size)
+            img_patches_torch = torch.from_numpy(patches).to(torch.complex64).unsqueeze(1).to(device)
+            batch_size = 1
+        
+        mask = test_masks[img_idx]  # [H, W]
+        orig_shape = img.shape[:2]
+        
+        # Patchify mask
+        mask_patches = patchify(mask, (patch_size, patch_size), step=step)
+        mask_patches = mask_patches.reshape(-1, patch_size, patch_size)
+        
+        # Predict
+        preds = []
+        with torch.no_grad():
+            for i in range(0, len(img_patches_torch), batch_size):
+                batch = img_patches_torch[i:i+batch_size]
+                out = model(batch)
+                pred = torch.argmax(out, dim=1).cpu().numpy()
+                preds.append(pred)
+                if model_type == "complex":
+                    torch.cuda.empty_cache()
+        
+        preds = np.concatenate(preds, axis=0)
+        
+        # Depatchify
+        pred_full = depatchify_patches(preds, orig_shape, patch_size, step)
+        mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, step)
+        
+        # Compute metrics
+        pa = np.mean(pred_full == mask_full)
+        miou, class_ious = compute_miou(pred_full, mask_full, num_classes)
+        class_accs = compute_classwise_pixel_accuracy(pred_full, mask_full, num_classes)
+        
+        all_metrics.append(pa)
+        all_mious.append(miou)
+        all_class_accs.append(class_accs)
+    
+    mean_pa = np.mean(all_metrics)
+    mean_miou = np.nanmean(all_mious)
+    mean_class_accs = np.nanmean(np.array(all_class_accs), axis=0)
+    
+    return mean_pa, mean_miou, mean_class_accs
+
+def evaluate_all_real(
+    checkpoint_dir,
+    test_images_path="dataset/real/test/test_images.npy",
+    test_masks_path="dataset/real/test/test_masks.npy",
+    patch_size=992,
+    device="cuda",
+    n_out=16
+):
+    """Evaluate all real model checkpoints and find best performers"""
+    
+    print("\n🔍 Scanning REAL model checkpoints...")
+    checkpoint_dir = os.path.abspath(checkpoint_dir)
+    pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+    checkpoint_files = sorted(glob.glob(pattern))
+    
+    best_pa = {"score": -1, "file": "", "epoch": ""}
+    best_miou = {"score": -1, "file": "", "epoch": ""}
+    best_cpa = {"score": -1, "file": "", "epoch": ""}
+    
+    print(f"Found {len(checkpoint_files)} real model checkpoints to evaluate...")
+    
+    for checkpoint_path in checkpoint_files:
+        try:
+            filename = os.path.basename(checkpoint_path)
+            epoch = filename.replace("checkpoint_epoch_", "").replace(".pt", "")
+            
+            print(f"  Evaluating {filename}...", end=" ")
+            
+            pa, miou, class_accs = evaluate_checkpoint_without_visualization(
+                checkpoint_path,
+                test_images_path,
+                test_masks_path,
+                patch_size=patch_size,
+                device=device,
+                model_type="real",
+                n_out=n_out
+            )
+            
+            mean_cpa = np.nanmean(class_accs)
+            
+            print(f"PA={pa:.4f}, MIoU={miou:.4f}, CPA={mean_cpa:.4f}")
+            
+            # Update best scores
+            if pa > best_pa["score"]:
+                best_pa = {"score": pa, "file": filename, "epoch": epoch}
+            if miou > best_miou["score"]:
+                best_miou = {"score": miou, "file": filename, "epoch": epoch}
+            if mean_cpa > best_cpa["score"]:
+                best_cpa = {"score": mean_cpa, "file": filename, "epoch": epoch}
+                
+        except Exception as e:
+            print(f"ERROR: {str(e)}")
+            continue
+    
+    return best_pa, best_miou, best_cpa
+
+def evaluate_all_complex(
+    checkpoint_dir,
+    test_images_path="dataset/complex/test/test_images_complex.npy",
+    test_masks_path="dataset/complex/test/test_masks.npy",
+    patch_size=992,
+    device="cuda",
+    n_out=16
+):
+    """Evaluate all complex model checkpoints and find best performers"""
+    
+    print("\n🔍 Scanning COMPLEX model checkpoints...")
+    checkpoint_dir = os.path.abspath(checkpoint_dir)
+    pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+    checkpoint_files = sorted(glob.glob(pattern))
+    
+    best_pa = {"score": -1, "file": "", "epoch": ""}
+    best_miou = {"score": -1, "file": "", "epoch": ""}
+    best_cpa = {"score": -1, "file": "", "epoch": ""}
+    
+    print(f"Found {len(checkpoint_files)} complex model checkpoints to evaluate...")
+    
+    for checkpoint_path in checkpoint_files:
+        try:
+            filename = os.path.basename(checkpoint_path)
+            epoch = filename.replace("checkpoint_epoch_", "").replace(".pt", "")
+            
+            print(f"  Evaluating {filename}...", end=" ")
+            
+            pa, miou, class_accs = evaluate_checkpoint_without_visualization(
+                checkpoint_path,
+                test_images_path,
+                test_masks_path,
+                patch_size=patch_size,
+                device=device,
+                model_type="complex",
+                n_out=n_out
+            )
+            
+            mean_cpa = np.nanmean(class_accs)
+            
+            print(f"PA={pa:.4f}, MIoU={miou:.4f}, CPA={mean_cpa:.4f}")
+            
+            # Update best scores
+            if pa > best_pa["score"]:
+                best_pa = {"score": pa, "file": filename, "epoch": epoch}
+            if miou > best_miou["score"]:
+                best_miou = {"score": miou, "file": filename, "epoch": epoch}
+            if mean_cpa > best_cpa["score"]:
+                best_cpa = {"score": mean_cpa, "file": filename, "epoch": epoch}
+                
+        except Exception as e:
+            print(f"ERROR: {str(e)}")
+            continue
+    
+    return best_pa, best_miou, best_cpa
+
+def find_best_checkpoints():
+    """Find best performing checkpoints for real and complex models"""
+    
+    print("\n" + "="*70)
+    print("SCANNING ALL CHECKPOINTS - FINDING BEST PERFORMERS")
+    print("="*70)
+    
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    # ====================
+    # REAL MODEL SCANNING
+    # ====================
+    best_real_pa, best_real_miou, best_real_cpa = evaluate_all_real(
+        checkpoint_dir=r"checkpoints_stride-64_16-out_modified(wt. loss(adaptive old loss) - 0.5 dice) [old loss - ok performance]/best",
+        test_images_path="dataset/real/test/test_images.npy",
+        test_masks_path="dataset/real/test/test_masks.npy",
+        patch_size=992,
+        device=device,
+        n_out=16
+    )
+    
+    # ====================
+    # COMPLEX MODEL SCANNING
+    # ====================
+    best_complex_pa, best_complex_miou, best_complex_cpa = evaluate_all_complex(
+        checkpoint_dir=r"ComplexTest_16_1900-batches_sgd-FIXED/best",
+        test_images_path="dataset/complex/test/test_images_complex.npy",
+        test_masks_path="dataset/complex/test/test_masks.npy",
+        patch_size=992,
+        device=device,
+        n_out=16
+    )
+    
+    # ====================
+    # RESULTS SUMMARY
+    # ====================
+    print("\n" + "="*70)
+    print("🏆 BEST PERFORMING CHECKPOINTS")
+    print("="*70)
+    
+    print("\n📊 REAL MODEL RESULTS:")
+    print(f"  🎯 Best Pixel Accuracy (PA):     {best_real_pa['file']} (Epoch {best_real_pa['epoch']}) - {best_real_pa['score']:.4f}")
+    print(f"  🎯 Best Mean IoU (MIoU):         {best_real_miou['file']} (Epoch {best_real_miou['epoch']}) - {best_real_miou['score']:.4f}")
+    print(f"  🎯 Best Class Pixel Acc (CPA):   {best_real_cpa['file']} (Epoch {best_real_cpa['epoch']}) - {best_real_cpa['score']:.4f}")
+    
+    print("\n📊 COMPLEX MODEL RESULTS:")
+    print(f"  🎯 Best Pixel Accuracy (PA):     {best_complex_pa['file']} (Epoch {best_complex_pa['epoch']}) - {best_complex_pa['score']:.4f}")
+    print(f"  🎯 Best Mean IoU (MIoU):         {best_complex_miou['file']} (Epoch {best_complex_miou['epoch']}) - {best_complex_miou['score']:.4f}")
+    print(f"  🎯 Best Class Pixel Acc (CPA):   {best_complex_cpa['file']} (Epoch {best_complex_cpa['epoch']}) - {best_complex_cpa['score']:.4f}")
+    
+    print("\n" + "="*70)
+
+# best_pa, best_miou, best_cpa = evaluate_all_real(
+#     checkpoint_dir=r"checkpoints_stride-64_16-out_modified(wt. loss(adaptive old loss) - 0.5 dice) [old loss - ok performance]/best",
+#     patch_size=992,
+#     device="cuda", 
+#     n_out=16
+# )
+
+# Scan complex model checkpoints  
+# best_pa, best_miou, best_cpa = evaluate_all_complex(
+#     checkpoint_dir=r"ComplexTest_16_1900-batches_sgd-FIXED/best",
+#     patch_size=992,
+#     device="cuda",
+#     n_out=32  # Different output channels for complex model
+# )
+
 # device = "cuda" if torch.cuda.is_available() else "cpu"
 # checkpoint_dir = r"checkpoints_stride-64_16-out_modified-complex(wt. loss(dice=0.5) + sgd(0.1lr)/best"
 # checkpoint_dir = os.path.abspath(checkpoint_dir)
@@ -434,43 +703,47 @@ def complex():
 #             device=device
 #         )
 
-device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint_dir = r"checkpoints_stride-64_16-out_modified(wt. loss(adaptive old loss) - 0.5 dice) [old loss - ok performance]/best"
-checkpoint_dir = os.path.abspath(checkpoint_dir)
-pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
-print("Looking for files with pattern:", pattern)
-checkpoint_files = sorted(glob.glob(pattern))
-print(f"Found {len(checkpoint_files)} checkpoints.")
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# checkpoint_dir = r"checkpoints_stride-64_16-out_modified(wt. loss(adaptive old loss) - 0.5 dice) [old loss - ok performance]/best"
+# checkpoint_dir = os.path.abspath(checkpoint_dir)
+# pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+# print("Looking for files with pattern:", pattern)
+# checkpoint_files = sorted(glob.glob(pattern))
+# print(f"Found {len(checkpoint_files)} checkpoints.")
 
-for patch_size in [992]:  # 0 means random
-    for checkpoint_path in checkpoint_files:
-        print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
-        evaluate_on_full_test_images(
-            checkpoint_path,
-            test_images_path="dataset/real/test/test_images.npy",
-            test_masks_path="dataset/real/test/test_masks.npy",
-            patch_size=patch_size,
-            device=device
-        )
+# for patch_size in [992]:  # 0 means random
+#     for checkpoint_path in checkpoint_files:
+#         print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+#         evaluate_on_full_test_images(
+#             checkpoint_path,
+#             test_images_path="dataset/real/test/test_images.npy",
+#             test_masks_path="dataset/real/test/test_masks.npy",
+#             patch_size=patch_size,
+#             device=device
+#         )
 
-# Complex model visualization
-print("\n" + "="*50)
-print("COMPLEX MODEL EVALUATION")
-device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint_dir_complex = r"ComplexTest_16_1900-batches_sgd-FIXED/best"
-checkpoint_dir_complex = os.path.abspath(checkpoint_dir_complex)
-pattern_complex = os.path.join(glob.escape(checkpoint_dir_complex), "checkpoint_epoch_*.pt")
-print("Looking for complex model files with pattern:", pattern_complex)
-checkpoint_files_complex = sorted(glob.glob(pattern_complex))
-print(f"Found {len(checkpoint_files_complex)} complex checkpoints.")
+# # Complex model visualization
+# print("\n" + "="*50)
+# print("COMPLEX MODEL EVALUATION")
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# checkpoint_dir_complex = r"ComplexTest_16_1900-batches_sgd-FIXED/best"
+# checkpoint_dir_complex = os.path.abspath(checkpoint_dir_complex)
+# pattern_complex = os.path.join(glob.escape(checkpoint_dir_complex), "checkpoint_epoch_*.pt")
+# print("Looking for complex model files with pattern:", pattern_complex)
+# checkpoint_files_complex = sorted(glob.glob(pattern_complex))
+# print(f"Found {len(checkpoint_files_complex)} complex checkpoints.")
 
-for patch_size in [992]:  # 0 means random
-    for checkpoint_path in checkpoint_files_complex:
-        print(f"\nEvaluating complex checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
-        evaluate_on_full_test_images_complex(
-            checkpoint_path=checkpoint_path,
-            test_images_path="dataset/complex/test/test_images_complex.npy",
-            test_masks_path="dataset/complex/test/test_masks.npy",
-            patch_size=patch_size,
-            device=device
-        )
+# for patch_size in [992]:  # 0 means random
+#     for checkpoint_path in checkpoint_files_complex:
+#         print(f"\nEvaluating complex checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+#         evaluate_on_full_test_images_complex(
+#             checkpoint_path=checkpoint_path,
+#             test_images_path="dataset/complex/test/test_images_complex.npy",
+#             test_masks_path="dataset/complex/test/test_masks.npy",
+#             patch_size=patch_size,
+#             device=device
+#         )
+
+# =============================================================================
+# CHECKPOINT SCANNING - FIND BEST PERFORMING WEIGHTS
+# =============================================================================
