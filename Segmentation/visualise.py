@@ -8,6 +8,25 @@ from model_unet import UNet,ComplexUNet
 from patchify import patchify, unpatchify
 import matplotlib.pyplot as plt
 import random
+from matplotlib.colors import ListedColormap
+
+FIXED_COLORS = [
+    "#e6194b",  # red
+    "#3cb44b",  # green
+    "#ffe119",  # yellow
+    "#0082c8",  # blue
+    "#f58231",  # orange
+    "#911eb4",  # purple
+    "#46f0f0",  # cyan
+    "#f032e6",  # magenta
+    "#d2f53c",  # lime
+    "#fabebe",  # pink
+]
+FIXED_CMAP = ListedColormap(FIXED_COLORS)
+
+# Define constants
+PATCH_SIZES = [32, 64, 96, 128]
+PATCH_STEPS = [32, 64, 96, 128]
 
 # Add at the top of your file (after imports)
 def compute_miou(pred, target, num_classes):
@@ -116,6 +135,10 @@ def evaluate_on_test(fold, patch_size, out_root="preprocessed_random", checkpoin
         pred_full = depatchify_patches(preds, orig_shape, patch_size, PATCH_STEPS[PATCH_SIZES.index(patch_size)])
         mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, PATCH_STEPS[PATCH_SIZES.index(patch_size)])
         # Visualize
+        
+        pred_full = np.clip(np.round(pred_full), 0, 8).astype(int)
+        mask_full = np.clip(np.round(mask_full), 0, 8).astype(int)
+        
         visualize_prediction(np.zeros(orig_shape), mask_full, pred_full, idx=img_idx)
         # Compute metrics (example: pixel accuracy)
         pa = np.mean(pred_full == mask_full)
@@ -187,6 +210,8 @@ def evaluate_on_test_for_all_checkpoints(patch_size, out_root="preprocessed_rand
             orig_shape = meta[0]['orig_shape'][:2]
             pred_full = depatchify_patches(preds, orig_shape, patch_size, PATCH_STEPS[PATCH_SIZES.index(patch_size)])
             mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, PATCH_STEPS[PATCH_SIZES.index(patch_size)])
+            pred_full = np.clip(np.round(pred_full), 0, 8).astype(int)
+            mask_full = np.clip(np.round(mask_full), 0, 8).astype(int)
             visualize_prediction(np.zeros(orig_shape), mask_full, pred_full, idx=img_idx)
             pa = np.mean(pred_full == mask_full)
             all_metrics.append(pa)
@@ -215,7 +240,7 @@ def evaluate_on_full_test_images(
     if patch_size in PATCH_SIZES:
         step = PATCH_STEPS[PATCH_SIZES.index(patch_size)]
     else:
-        step = 1 if patch_size >= 512 else patch_size
+        step = 1 if patch_size >= 1000 else patch_size
 
     # Load model
     model = UNet(n_channels=2, n_classes=9, n_out_channels=16).to(device)
@@ -252,7 +277,6 @@ def evaluate_on_full_test_images(
         # Depatchify
         pred_full = depatchify_patches(preds, orig_shape, patch_size, step)
         mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, step)
-
         # Visualize
         visualize_prediction(np.zeros(orig_shape), mask_full, pred_full, idx=img_idx)
         pa = np.mean(pred_full == mask_full)
@@ -291,7 +315,7 @@ def evaluate_on_full_test_images_complex(
     if patch_size in PATCH_SIZES:
         step = PATCH_STEPS[PATCH_SIZES.index(patch_size)]
     else:
-        step = 1 if patch_size >= 512 else patch_size
+        step = 1 if patch_size >= 1000 else patch_size
 
     # Load model
     model = ComplexUNet(n_channels=1, n_classes=9, n_out_channels=16).to(device)
@@ -328,7 +352,6 @@ def evaluate_on_full_test_images_complex(
         # Depatchify
         pred_full = depatchify_patches(preds, orig_shape, patch_size, step)
         mask_full = depatchify_patches(mask_patches, orig_shape, patch_size, step)
-
         # Visualize using magnitude
         img_magnitude = np.abs(img)
         visualize_prediction(img_magnitude, mask_full, pred_full, idx=img_idx)
@@ -392,17 +415,58 @@ def complex():
                 device=device
             )
 
+# device = "cuda" if torch.cuda.is_available() else "cpu"
+# checkpoint_dir = r"checkpoints_stride-64_16-out_modified-complex(wt. loss(dice=0.5) + sgd(0.1lr)/best"
+# checkpoint_dir = os.path.abspath(checkpoint_dir)
+# pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
+# print("Looking for files with pattern:", pattern)
+# checkpoint_files = sorted(glob.glob(pattern))
+# print(f"Found {len(checkpoint_files)} checkpoints.")
+
+# for patch_size in [992,128]:  # 0 means random
+#     for checkpoint_path in checkpoint_files:
+#         print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+#         evaluate_on_full_test_images_complex(
+#             checkpoint_path=checkpoint_path,
+#             test_images_path="dataset/complex/test/test_images_complex.npy",
+#             test_masks_path="dataset/complex/test/test_masks.npy",
+#             patch_size=patch_size,
+#             device=device
+#         )
+
 device = "cuda" if torch.cuda.is_available() else "cpu"
-checkpoint_dir = r"checkpoints_stride-64_16-out_modified-complex(wt. loss(dice=0.5) + sgd(0.1lr)/best"
+checkpoint_dir = r"checkpoints_stride-64_16-out_modified(wt. loss(adaptive old loss) - 0.5 dice) [old loss - ok performance]/best"
 checkpoint_dir = os.path.abspath(checkpoint_dir)
 pattern = os.path.join(glob.escape(checkpoint_dir), "checkpoint_epoch_*.pt")
 print("Looking for files with pattern:", pattern)
 checkpoint_files = sorted(glob.glob(pattern))
 print(f"Found {len(checkpoint_files)} checkpoints.")
 
-for patch_size in [992,128]:  # 0 means random
+for patch_size in [992]:  # 0 means random
     for checkpoint_path in checkpoint_files:
         print(f"\nEvaluating checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
+        evaluate_on_full_test_images(
+            checkpoint_path,
+            test_images_path="dataset/real/test/test_images.npy",
+            test_masks_path="dataset/real/test/test_masks.npy",
+            patch_size=patch_size,
+            device=device
+        )
+
+# Complex model visualization
+print("\n" + "="*50)
+print("COMPLEX MODEL EVALUATION")
+device = "cuda" if torch.cuda.is_available() else "cpu"
+checkpoint_dir_complex = r"ComplexTest_16_1900-batches_sgd-FIXED/best"
+checkpoint_dir_complex = os.path.abspath(checkpoint_dir_complex)
+pattern_complex = os.path.join(glob.escape(checkpoint_dir_complex), "checkpoint_epoch_*.pt")
+print("Looking for complex model files with pattern:", pattern_complex)
+checkpoint_files_complex = sorted(glob.glob(pattern_complex))
+print(f"Found {len(checkpoint_files_complex)} complex checkpoints.")
+
+for patch_size in [992]:  # 0 means random
+    for checkpoint_path in checkpoint_files_complex:
+        print(f"\nEvaluating complex checkpoint: {os.path.basename(checkpoint_path)} with patch size {patch_size}")
         evaluate_on_full_test_images_complex(
             checkpoint_path=checkpoint_path,
             test_images_path="dataset/complex/test/test_images_complex.npy",
