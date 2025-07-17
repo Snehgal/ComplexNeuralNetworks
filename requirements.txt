@@ -9,3 +9,4 @@ torchinfo
 onnx
 h5py
 patchify
+seaborn
