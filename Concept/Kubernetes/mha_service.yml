@@ -9,5 +9,5 @@ spec:
     - protocol: TCP
       port: 80
       targetPort: 8888
-      nodePort: 30089 #change this to anythign between 300007 to 30900
+      nodePort: 30090 #change this to anythign between 300007 to 30900
   type: NodePort

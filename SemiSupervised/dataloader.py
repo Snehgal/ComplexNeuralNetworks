@@ -6,12 +6,12 @@ import torch
 from torch.utils.data import Dataset, DataLoader
 from tqdm import tqdm
 
-PATCH_SIZES = [96, 128, 160]  # List of patch sizes
-STRIDES = [64, 96, 128]       # Corresponding strides
+PATCH_SIZES = [128]  # List of patch sizes
+STRIDES = [32]       # Corresponding strides
 
 def create_patches_ssl_dataset(dataset_dir, patch_sizes, strides):
     """
-    Create patches for annotated and unannotated datasets within ssl_dataset.
+    Create patches for annotated and unannotated datasets within ssl_dataset, including pseudo labels.
     
     Args:
         dataset_dir: Path to the ssl_dataset directory
@@ -46,21 +46,29 @@ def create_patches_ssl_dataset(dataset_dir, patch_sizes, strides):
             patch_dir = os.path.join(dataset_dir, f"{split_name}_patches", f"patch_{patch_size}")
             os.makedirs(patch_dir, exist_ok=True)
             
-            patch_list, mask_list, meta_list = [], [], []
+            patch_list, mask_list, pseudo1_list, pseudo2_list, meta_list = [], [], [], [], []
             for img_id in tqdm(ids, desc=f"{split_name} - Patch Size {patch_size}"):
-                # Load image and mask
+                # Load image, mask, and pseudo labels
                 img = np.load(os.path.join(split_dir, f"img_{img_id}_data.npy"))
                 mask = np.load(os.path.join(split_dir, f"img_{img_id}_segments.npy"))
+                pseudo1 = np.load(os.path.join(split_dir, f"img_{img_id}_pseudo1.npy"))
+                pseudo2 = np.load(os.path.join(split_dir, f"img_{img_id}_pseudo2.npy"))
                 
                 # Extract patches
                 patches = patchify(img, (patch_size, patch_size, img.shape[-1]), step=stride)
                 patch_reshaped = patches.reshape(-1, patch_size, patch_size, img.shape[-1])
                 mask_patches = patchify(mask, (patch_size, patch_size), step=stride)
                 mask_reshaped = mask_patches.reshape(-1, patch_size, patch_size)
+                pseudo1_patches = patchify(pseudo1, (patch_size, patch_size), step=stride)
+                pseudo1_reshaped = pseudo1_patches.reshape(-1, patch_size, patch_size)
+                pseudo2_patches = patchify(pseudo2, (patch_size, patch_size), step=stride)
+                pseudo2_reshaped = pseudo2_patches.reshape(-1, patch_size, patch_size)
                 
                 # Append patches and metadata
                 patch_list.append(patch_reshaped.astype(np.float32))
                 mask_list.append(mask_reshaped.astype(np.uint8))
+                pseudo1_list.append(pseudo1_reshaped.astype(np.uint8))
+                pseudo2_list.append(pseudo2_reshaped.astype(np.uint8))
                 meta_list.extend([
                     {
                         'img_id': img_id,
@@ -76,8 +84,12 @@ def create_patches_ssl_dataset(dataset_dir, patch_sizes, strides):
             # Save patches and metadata
             patch_arr = np.concatenate(patch_list, axis=0)
             mask_arr = np.concatenate(mask_list, axis=0)
+            pseudo1_arr = np.concatenate(pseudo1_list, axis=0)
+            pseudo2_arr = np.concatenate(pseudo2_list, axis=0)
             np.save(os.path.join(patch_dir, f"{split_name}_patches.npy"), patch_arr)
             np.save(os.path.join(patch_dir, f"{split_name}_masks.npy"), mask_arr)
+            np.save(os.path.join(patch_dir, f"{split_name}_pseudo1.npy"), pseudo1_arr)
+            np.save(os.path.join(patch_dir, f"{split_name}_pseudo2.npy"), pseudo2_arr)
             with open(os.path.join(patch_dir, f"{split_name}_meta.pkl"), "wb") as f:
                 pickle.dump(meta_list, f)
             
@@ -94,33 +106,29 @@ def create_patches_ssl_dataset(dataset_dir, patch_sizes, strides):
     return summary
 
 def load_ssl_patches(patch_dir, split_name, patch_size):
-    """
-    Load patches and masks for training.
-    
-    Args:
-        patch_dir: Path to the patch directory
-        split_name: Name of the split ("annotated" or "unannotated")
-        patch_size: Patch size to load
-    
-    Returns:
-        Dataset object for training
-    """
+    """Load patches, masks, and pseudo labels for training."""
     patch_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_patches.npy")
     mask_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_masks.npy")
+    pseudo1_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_pseudo1.npy")
+    pseudo2_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_pseudo2.npy")
     meta_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_meta.pkl")
     
     patches = np.load(patch_file, mmap_mode='r')
     masks = np.load(mask_file, mmap_mode='r')
+    pseudo1 = np.load(pseudo1_file, mmap_mode='r')
+    pseudo2 = np.load(pseudo2_file, mmap_mode='r')
     with open(meta_file, 'rb') as f:
         meta = pickle.load(f)
     
-    return SSLPatchDataset(patches, masks, meta)
+    return SSLPatchDataset(patches, masks, pseudo1, pseudo2, meta)
 
 class SSLPatchDataset(Dataset):
-    """Dataset for SSL patches."""
-    def __init__(self, patches, masks, meta):
+    """Dataset for SSL patches with pseudo labels."""
+    def __init__(self, patches, masks, pseudo1, pseudo2, meta):
         self.patches = patches
         self.masks = masks
+        self.pseudo1 = pseudo1
+        self.pseudo2 = pseudo2
         self.meta = meta
 
     def __len__(self):
@@ -129,7 +137,9 @@ class SSLPatchDataset(Dataset):
     def __getitem__(self, idx):
         patch = self.patches[idx]
         mask = self.masks[idx]
-        return torch.from_numpy(patch).float(), torch.from_numpy(mask).long()
+        pseudo1 = self.pseudo1[idx]
+        pseudo2 = self.pseudo2[idx]
+        return torch.from_numpy(patch).float(), torch.from_numpy(mask).long(), torch.from_numpy(pseudo1).long(), torch.from_numpy(pseudo2).long()
 
 def get_ssl_dataloader(patch_dir, split_name, patch_size, batch_size=32, num_workers=4, shuffle=True):
     """
@@ -151,7 +161,7 @@ def get_ssl_dataloader(patch_dir, split_name, patch_size, batch_size=32, num_wor
 
 def load_ssl_patches_complex(patch_dir, split_name, patch_size):
     """
-    Load complex-valued patches and masks for training.
+    Load complex-valued patches, masks, and pseudo labels for training.
     
     Args:
         patch_dir: Path to the patch directory
@@ -163,20 +173,26 @@ def load_ssl_patches_complex(patch_dir, split_name, patch_size):
     """
     patch_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_patches.npy")
     mask_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_masks.npy")
+    pseudo1_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_pseudo1.npy")
+    pseudo2_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_pseudo2.npy")
     meta_file = os.path.join(patch_dir, f"patch_{patch_size}", f"{split_name}_meta.pkl")
     
     patches = np.load(patch_file, mmap_mode='r')
     masks = np.load(mask_file, mmap_mode='r')
+    pseudo1 = np.load(pseudo1_file, mmap_mode='r')
+    pseudo2 = np.load(pseudo2_file, mmap_mode='r')
     with open(meta_file, 'rb') as f:
         meta = pickle.load(f)
     
-    return SSLPatchDatasetComplex(patches, masks, meta)
+    return SSLPatchDatasetComplex(patches, masks, pseudo1, pseudo2, meta)
 
 class SSLPatchDatasetComplex(Dataset):
-    """Dataset for complex-valued SSL patches."""
-    def __init__(self, patches, masks, meta):
+    """Dataset for complex-valued SSL patches with pseudo labels."""
+    def __init__(self, patches, masks, pseudo1, pseudo2, meta):
         self.patches = patches
         self.masks = masks
+        self.pseudo1 = pseudo1
+        self.pseudo2 = pseudo2
         self.meta = meta
 
     def __len__(self):
@@ -185,11 +201,13 @@ class SSLPatchDatasetComplex(Dataset):
     def __getitem__(self, idx):
         patch = self.patches[idx]
         mask = self.masks[idx]
+        pseudo1 = self.pseudo1[idx]
+        pseudo2 = self.pseudo2[idx]
         # Return complex-valued patch as real and imaginary parts
         real = torch.from_numpy(patch[..., 0]).float()
         imag = torch.from_numpy(patch[..., 1]).float()
         complex_patch = torch.complex(real, imag)
-        return complex_patch, torch.from_numpy(mask).long()
+        return complex_patch, torch.from_numpy(mask).long(), torch.from_numpy(pseudo1).long(), torch.from_numpy(pseudo2).long()
 
 def get_ssl_dataloader_complex(patch_dir, split_name, patch_size, batch_size=32, num_workers=4, shuffle=True):
     """
@@ -209,8 +227,8 @@ def get_ssl_dataloader_complex(patch_dir, split_name, patch_size, batch_size=32,
     dataset = load_ssl_patches_complex(patch_dir, split_name, patch_size)
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
 
-PATCH_SIZES = [64, 128]
-STRIDES = [64, 128]  
+PATCH_SIZES = [128]
+STRIDES = [64]  
 
 ssl_dataset_dir = "ssl_dataset"
 summary = create_patches_ssl_dataset(ssl_dataset_dir, PATCH_SIZES, STRIDES)
