@@ -10,4 +10,8 @@ onnx
 h5py
 patchify
 seaborn
+<<<<<<< HEAD
 scikit-image
+=======
+scikit-image
+>>>>>>> 89b31fa169b615b6403a33f1be0e17ac8b2bd51b
