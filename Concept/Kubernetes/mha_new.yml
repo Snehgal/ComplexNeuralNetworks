@@ -32,7 +32,7 @@ spec:
               mountPath: /workspace
             - name: dshm
               mountPath: /dev/shm
-          workingDir: /workspace
+          workingDir: /workspace/workspace
       volumes:
         - name: pytorch-data
           hostPath:

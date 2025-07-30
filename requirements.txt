@@ -10,4 +10,4 @@ onnx
 h5py
 patchify
 seaborn
-skimage
+scikit-image

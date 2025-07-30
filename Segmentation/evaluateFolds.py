@@ -5,13 +5,6 @@ import matplotlib.pyplot as plt
 from collections import defaultdict
 import seaborn as sns
 
-# Import your models and functions
-from test import UNet, ComplexUNet, compute_metrics, get_confusion_matrix, CustomLoss, SimpleNorm
-from updatedDataloader import (
-    get_efficient_cross_validation_dataloaders, 
-    get_efficient_test_dataloader
-)
-
 class CheckpointEvaluator:
     def __init__(self, device=None):
         self.device = device if device else torch.device("cuda" if torch.cuda.is_available() else "cpu")
