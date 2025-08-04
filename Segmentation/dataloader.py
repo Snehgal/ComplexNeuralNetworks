@@ -16,17 +16,10 @@ import multiprocessing as mp
 
 file_path = "sassed_V4.h5"
 PATCH_SIZE = 128
-<<<<<<< HEAD
-STRIDE = 64
-N_FOLDS = 5
-NUM_CLASSES = 9
-PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), f"preprocessed-{STRIDE}")
-=======
 STRIDE = 32
 N_FOLDS = 5
 NUM_CLASSES = 9
 PREPROCESSED_DIR = os.path.join(os.path.dirname(file_path), f"preprocessed-speed-optimized-{STRIDE}")
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 os.makedirs(PREPROCESSED_DIR, exist_ok=True)
 
 # Use uncompressed formats for speed
@@ -90,48 +83,6 @@ def save_fold_dataset(fold=0, split='train'):
     
     print(f"[OK] Saved {split}_fold{fold} with {len(patches)} patches")
 
-<<<<<<< HEAD
-def save_complex_fold_dataset(fold=0, split='train'):
-    """Save complex-valued fold dataset using .npy for speed"""
-    all_indices, all_dominant_labels, _ = prepare_patch_data()
-    splits = load_fold_indices()
-    if splits is None:
-        print("[INFO] Generating new fold splits...")
-        skf = StratifiedKFold(n_splits=N_FOLDS, shuffle=True, random_state=42)
-        raw_splits = list(skf.split(np.arange(len(all_indices)), all_dominant_labels))
-        save_fold_indices(raw_splits)
-        splits = raw_splits
-
-    split_indices = splits[fold][0] if split == 'train' else splits[fold][1]
-    chosen_indices = [all_indices[i] for i in split_indices]
-
-    total_patches = len(chosen_indices)
-    complex_patches = np.empty((total_patches, PATCH_SIZE, PATCH_SIZE), dtype=np.complex64)
-    masks = np.empty((total_patches, PATCH_SIZE, PATCH_SIZE), dtype=np.int64)
-
-    from collections import defaultdict
-    grouped = defaultdict(list)
-    for i, (img_idx, patch_idx) in enumerate(chosen_indices):
-        grouped[img_idx].append((i, patch_idx))
-
-    for img_idx in tqdm(grouped, desc=f"Loading complex {split}_fold{fold}"):
-        complex_patch_data = np.load(per_image_complex_patch_file(img_idx))
-        mask_data = np.load(per_image_mask_file(img_idx))
-
-        for global_idx, patch_idx in grouped[img_idx]:
-            complex_patches[global_idx] = complex_patch_data[patch_idx]
-            masks[global_idx] = mask_data[patch_idx]
-
-    # Save
-    complex_file = fold_complex_patch_file(fold, split)
-    masks_file = os.path.join(PREPROCESSED_DIR, f"{split}_fold{fold}_masks.npy")
-    np.save(complex_file, complex_patches)
-    np.save(masks_file, masks)
-
-    print(f"[OK] Saved COMPLEX {split}_fold{fold} with {len(complex_patches)} patches")
-
-=======
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 def save_all_folds():
     """Generate all folds with parallel processing"""
     with ThreadPoolExecutor(max_workers=min(4, N_FOLDS * 2)) as executor:
@@ -199,28 +150,12 @@ def per_image_mask_file(idx):
 def per_image_meta_file(idx):
     return os.path.join(PREPROCESSED_DIR, f"meta_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}.pkl")
 
-<<<<<<< HEAD
-def per_image_complex_patch_file(idx):
-    return os.path.join(PREPROCESSED_DIR, f"patches_complex_img{idx}_ps{PATCH_SIZE}_stride{STRIDE}.npy")
-
-def fold_complex_patch_file(fold, split):
-    return os.path.join(PREPROCESSED_DIR, f"{split}_fold{fold}_complex_patches.npy")
-
-=======
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 def process_and_save_image_optimized(idx, img, mask):
     """Optimized processing with separate files for different data types"""
     try:
         patches, mask_patches = extract_patches_vectorized(img, mask)
         dominant_labels = dominant_label_vectorized(mask_patches)
-<<<<<<< HEAD
-        # Save complex patches as a single-channel complex64 array
-        complex_patches = patches[:, 0] + 1j * patches[:, 1]
-        np.save(per_image_complex_patch_file(idx), complex_patches)
-
-=======
         
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
         # Save as separate uncompressed .npy files for speed
         np.save(per_image_patch_file(idx), patches)
         np.save(per_image_mask_file(idx), mask_patches)
@@ -328,47 +263,6 @@ class MemoryMappedFoldDataset(Dataset):
             
         return patch, mask
 
-<<<<<<< HEAD
-class ComplexMemoryMappedDataset(Dataset):
-    """Memory-mapped complex dataset for ultra-fast access"""
-    def __init__(self, fold, split, transform=None, target_transform=None):
-        self.fold = fold
-        self.split = split
-        self.transform = transform
-        self.target_transform = target_transform
-
-        complex_file = fold_complex_patch_file(fold, split)
-        masks_file = os.path.join(PREPROCESSED_DIR, f"{split}_fold{fold}_masks.npy")
-
-        if not os.path.exists(complex_file) or not os.path.exists(masks_file):
-            print(f"[INFO] Generating complex {split}_fold{fold} dataset...")
-            save_complex_fold_dataset(fold, split)
-
-        self.patches = np.load(complex_file, mmap_mode='r')  # [N, 128, 128], complex64
-        self.masks = np.load(masks_file, mmap_mode='r')      # [N, 128, 128], int64
-
-        print(f"[INFO] Loaded COMPLEX {split}_fold{fold} with {len(self.patches)} samples")
-
-    def __len__(self):
-        return len(self.patches)
-
-    def __getitem__(self, idx):
-        patch = torch.from_numpy(self.patches[idx].copy()).to(torch.complex64)  # [128, 128]
-        patch = patch.unsqueeze(0)  # → [1, 128, 128]
-
-        mask = torch.from_numpy(self.masks[idx].copy())
-        
-        if self.transform:
-            patch = self.transform(patch)
-        if self.target_transform:
-            mask = self.target_transform(mask)
-
-        return patch, mask
-
-
-
-=======
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7
 class PreloadedRAMDataset(Dataset):
     """Fully preloaded dataset in RAM for maximum speed"""
     def __init__(self, fold, split, transform=None, target_transform=None):
@@ -442,35 +336,6 @@ def get_fold_dataloader(
         persistent_workers=(num_workers > 0),
         prefetch_factor=prefetch_factor if num_workers > 0 else None,
         drop_last=(split == 'train')  # Drop last incomplete batch for training
-<<<<<<< HEAD
-    )
-
-def get_complex_fold_dataloader(
-    fold=0,
-    split='train',
-    batch_size=32,
-    transform=None,
-    target_transform=None,
-    num_workers=0,
-    pin_memory=True,
-    shuffle=True,
-    prefetch_factor=4
-):
-    dataset = ComplexMemoryMappedDataset(fold, split, transform, target_transform)
-    num_workers = min(2, mp.cpu_count()) if num_workers == 0 else num_workers
-
-    return DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=shuffle,
-        num_workers=num_workers,
-        pin_memory=pin_memory,
-        persistent_workers=(num_workers > 0),
-        prefetch_factor=prefetch_factor if num_workers > 0 else None,
-        drop_last=(split == 'train')
-    )
-
-=======
     )
 
 # Utility functions for performance monitoring
@@ -511,4 +376,3 @@ if __name__ == "__main__":
     print("Speed-optimized data loader initialized")
     # Uncomment to run benchmark
 #     benchmark_loading_speed()
->>>>>>> 6a325e308d014ee6625cd974e3a164c47d610ee7

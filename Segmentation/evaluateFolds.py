@@ -388,6 +388,49 @@ class CheckpointEvaluator:
         print(f"Metrics comparison plot saved as: {plot_name}")
         plt.show()
 
+def robust_compute_metrics(conf_matrix, eps=1e-10):
+    """Robust metrics computation with error handling"""
+    
+    # Ensure conf_matrix is valid
+    assert conf_matrix.shape[0] == conf_matrix.shape[1], "Confusion matrix must be square"
+    assert torch.all(conf_matrix >= 0), "Confusion matrix cannot have negative values"
+    
+    num_classes = conf_matrix.shape[0]
+    
+    # Pixel Accuracy
+    correct = torch.diag(conf_matrix).sum()
+    total = conf_matrix.sum()
+    PA = correct / (total + eps)
+    
+    # Class Pixel Accuracy
+    per_class_total = conf_matrix.sum(1)  # Ground truth count per class
+    per_class_correct = torch.diag(conf_matrix)
+    
+    # Only compute CPA for classes that exist in ground truth
+    valid_classes = per_class_total > 0
+    if valid_classes.sum() > 0:
+        per_class_acc = per_class_correct[valid_classes] / per_class_total[valid_classes]
+        CPA = per_class_acc.mean()
+    else:
+        CPA = torch.tensor(0.0)
+    
+    # Mean IoU
+    TP = torch.diag(conf_matrix)
+    FP = conf_matrix.sum(0) - TP  # False positives per class
+    FN = conf_matrix.sum(1) - TP  # False negatives per class
+    
+    # Union = TP + FP + FN
+    union = TP + FP + FN
+    
+    # Only compute IoU for classes with non-zero union
+    valid_classes = union > 0
+    if valid_classes.sum() > 0:
+        iou_per_class = TP[valid_classes] / union[valid_classes]
+        MIoU = iou_per_class.mean()
+    else:
+        MIoU = torch.tensor(0.0)
+    
+    return PA.item(), CPA.item(), MIoU.item()
 # Example usage functions
 def evaluate_single_checkpoint(checkpoint_path, data_folder="crossVal_Dataset", 
                              model_type="real", fold_number=0, num_classes=9, n_out_channels=16):

@@ -17,6 +17,224 @@ PATCH_STEPS = [64,96,128,160]
 H5_FILE = "sassed_V4.h5"
 
 N_FOLDS = 3
+
+def create_custom_h5_datasets(
+    source_h5_file,
+    array1_idxs,
+    array2_idxs, 
+    output_h5_names,
+    total_images=None
+):
+    """
+    Create 3 custom H5 datasets from a source H5 file based on image indices.
+    
+    Args:
+        source_h5_file (str): Path to the source .h5 file
+        array1_idxs (list/array): Image indices for first dataset
+        array2_idxs (list/array): Image indices for second dataset  
+        output_h5_names (list): List of 3 strings - names for the output H5 files
+        total_images (int, optional): Total number of images in source. If None, will be inferred.
+    
+    Returns:
+        dict: Statistics about each created dataset
+    """
+    import numpy as np
+    import h5py
+    import os
+    from tqdm import tqdm
+    
+    # Validate inputs
+    if len(output_h5_names) != 3:
+        raise ValueError("output_h5_names must contain exactly 3 filenames")
+    
+    # Convert to numpy arrays for easier manipulation
+    array1_idxs = np.array(array1_idxs)
+    array2_idxs = np.array(array2_idxs)
+    
+    # Load source data
+    print(f"Loading source data from: {source_h5_file}")
+    with h5py.File(source_h5_file, 'r') as source_f:
+        source_data = source_f['data'][:]
+        source_segments = source_f['segments'][:]
+        
+        if total_images is None:
+            total_images = len(source_data)
+        
+        print(f"Source data shape: {source_data.shape}")
+        print(f"Source segments shape: {source_segments.shape}")
+        print(f"Total images: {total_images}")
+    
+    # Validate indices
+    max_idx = max(np.max(array1_idxs) if len(array1_idxs) > 0 else 0,
+                  np.max(array2_idxs) if len(array2_idxs) > 0 else 0)
+    if max_idx >= total_images:
+        raise ValueError(f"Index {max_idx} exceeds total images {total_images}")
+    
+    # Create array3_idxs (all remaining indices)
+    used_idxs = np.concatenate([array1_idxs, array2_idxs])
+    all_idxs = np.arange(total_images)
+    array3_idxs = np.setdiff1d(all_idxs, used_idxs)
+    
+    # Dataset configurations
+    datasets_config = [
+        {"name": output_h5_names[0], "indices": array1_idxs, "description": "Dataset 1 (Array 1)"},
+        {"name": output_h5_names[1], "indices": array2_idxs, "description": "Dataset 2 (Array 2)"},
+        {"name": output_h5_names[2], "indices": array3_idxs, "description": "Dataset 3 (Remaining)"}
+    ]
+    
+    stats = {}
+    
+    # Create each dataset
+    for config in datasets_config:
+        name = config["name"]
+        indices = config["indices"]
+        desc = config["description"]
+        
+        if len(indices) == 0:
+            print(f"⚠️  Skipping {desc} - no indices provided")
+            stats[name] = {"num_images": 0, "status": "skipped"}
+            continue
+        
+        print(f"\n📁 Creating {desc}: {name}")
+        print(f"   Indices: {len(indices)} samples")
+        print(f"   Index range: [{np.min(indices)}, {np.max(indices)}]")
+        
+        # Extract data for this dataset
+        dataset_data = source_data[indices]
+        dataset_segments = source_segments[indices]
+        
+        # Create new H5 file
+        output_path = name if name.endswith('.h5') else f"{name}.h5"
+        
+        with h5py.File(output_path, 'w') as output_f:
+            # Create datasets with same structure as source
+            print(f"   Writing data: {dataset_data.shape}")
+            data_dset = output_f.create_dataset(
+                'data', 
+                data=dataset_data,
+                compression='gzip',
+                compression_opts=6
+            )
+            
+            print(f"   Writing segments: {dataset_segments.shape}")
+            segments_dset = output_f.create_dataset(
+                'segments',
+                data=dataset_segments, 
+                compression='gzip',
+                compression_opts=6
+            )
+            
+            # Add metadata
+            output_f.attrs['source_file'] = source_h5_file
+            output_f.attrs['num_images'] = len(indices)
+            output_f.attrs['creation_time'] = str(np.datetime64('now'))
+            output_f.attrs['description'] = desc
+            
+            # Store the indices used
+            indices_dset = output_f.create_dataset('source_indices', data=indices)
+        
+        # Collect statistics
+        stats[name] = {
+            "num_images": len(indices),
+            "data_shape": dataset_data.shape,
+            "segments_shape": dataset_segments.shape,
+            "indices_range": [int(np.min(indices)), int(np.max(indices))],
+            "output_path": output_path,
+            "status": "created"
+        }
+        
+        print(f"   ✅ Created: {output_path}")
+    
+    # Print summary
+    print(f"\n{'='*60}")
+    print("DATASET CREATION SUMMARY")
+    print(f"{'='*60}")
+    print(f"Source file: {source_h5_file}")
+    print(f"Total source images: {total_images}")
+    print(f"Array 1 indices: {len(array1_idxs)} images")
+    print(f"Array 2 indices: {len(array2_idxs)} images") 
+    print(f"Remaining indices: {len(array3_idxs)} images")
+    print(f"Total processed: {len(array1_idxs) + len(array2_idxs) + len(array3_idxs)}")
+    
+    for name, stat in stats.items():
+        if stat["status"] == "created":
+            print(f"✅ {name}: {stat['num_images']} images -> {stat['output_path']}")
+        else:
+            print(f"⚠️  {name}: {stat['status']}")
+    
+    return stats
+
+def create_cross_validation_h5_splits(
+    source_h5_file,
+    output_prefix="fold",
+    n_folds=3,
+    random_state=42
+):
+    """
+    Convenience function to create cross-validation H5 splits.
+    
+    Args:
+        source_h5_file (str): Path to source .h5 file
+        output_prefix (str): Prefix for output files (e.g., "fold" -> "fold_0.h5", "fold_1.h5", etc.)
+        n_folds (int): Number of folds to create
+        random_state (int): Random seed for reproducibility
+    
+    Returns:
+        dict: Statistics for all created folds
+    """
+    import h5py
+    import numpy as np
+    from sklearn.model_selection import StratifiedKFold
+    
+    # Load source data to get stratification labels
+    with h5py.File(source_h5_file, 'r') as f:
+        masks = f['segments'][:]
+        total_images = len(masks)
+    
+    # Create stratification labels (dominant class per image)
+    stratify_labels = np.array([np.bincount(mask.flatten()).argmax() for mask in masks])
+    
+    # Create cross-validation splits
+    skf = StratifiedKFold(n_splits=n_folds, shuffle=True, random_state=random_state)
+    all_indices = np.arange(total_images)
+    
+    all_stats = {}
+    
+    for fold_idx, (train_val_idx, test_idx) in enumerate(skf.split(all_indices, stratify_labels)):
+        # For this fold: train_val_idx and test_idx
+        # Split train_val_idx into train (80%) and val (20%)
+        np.random.seed(random_state + fold_idx)  # Different seed per fold
+        np.random.shuffle(train_val_idx)
+        
+        split_point = int(0.8 * len(train_val_idx))
+        train_idx = train_val_idx[:split_point]
+        val_idx = train_val_idx[split_point:]
+        
+        # Create H5 files for this fold
+        output_names = [
+            f"{output_prefix}_{fold_idx}_train.h5",
+            f"{output_prefix}_{fold_idx}_val.h5", 
+            f"{output_prefix}_{fold_idx}_test.h5"
+        ]
+        
+        print(f"\n🔄 Creating Fold {fold_idx}")
+        print(f"   Train: {len(train_idx)} samples")
+        print(f"   Val: {len(val_idx)} samples")
+        print(f"   Test: {len(test_idx)} samples")
+        
+        fold_stats = create_custom_h5_datasets(
+            source_h5_file=source_h5_file,
+            array1_idxs=train_idx,
+            array2_idxs=val_idx,
+            output_h5_names=output_names,
+            total_images=total_images
+        )
+        
+        # The third dataset will use test_idx (remaining indices)
+        all_stats[f"fold_{fold_idx}"] = fold_stats
+    
+    return all_stats
+
 def ensure_preprocessed(out_root="preprocessed_stride", mode="real", n_folds=N_FOLDS):  # Add parameter
     # Check if any patch dir exists, else preprocess
     for ps in PATCH_SIZES:
