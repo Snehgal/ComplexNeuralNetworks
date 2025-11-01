@@ -1,5 +1,7 @@
 # ComplexNeuralNetworks
 
+Data: https://data.mendeley.com/datasets/s5j5gzr2vc/4
+
 ComplexNeuralNetworks is a research-oriented repository focused on the development and experimentation of neural network architectures that operate on complex-valued data. This project includes implementations of both real and complex-valued models, custom CNNs, ResNet variants, and segmentation networks such as UNet and LadderNet. The codebase is modular and supports training, evaluation, and visualization for a variety of datasets.
 
 ## Features
@@ -17,6 +19,8 @@ ComplexNeuralNetworks is a research-oriented repository focused on the developme
 
 
 ## Getting Started
+### Data
+To install the data, download the 4th version of the dataset from https://data.mendeley.com/datasets/s5j5gzr2vc/4 and use `Synthetic Aperture Sonar Seabed Environment Dataset (SASSED)\Synthetic Aperture Sonar Seabed Environment Dataset (SASSED)\MLSP-Net Data\sassed.h5`
 
 ### Installation
 
