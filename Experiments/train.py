@@ -78,7 +78,7 @@ def compute_metrics_per_image(preds, masks, num_classes):
 
     return mean_cpa, mean_iou
 
-def train_segformer(model, train_loader, val_loader, num_classes=9, epochs=50, lr=1e-4, device="cuda"):
+def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs=50, lr=1e-4, device="cuda"):
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss()
