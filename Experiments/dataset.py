@@ -89,8 +89,8 @@ def Data_loader():
     val_dataset = SASDataset(images_2ch[val_indices], masks[val_indices], augment=False)
     test_dataset = SASDataset(images_2ch[test_indices], masks[test_indices], augment=False)
 
-    train_loader = DataLoader(train_dataset, batch_size=3, shuffle=True, num_workers=4) # Loads dataset batches of batch_size
-    val_loader = DataLoader(val_dataset, batch_size=3, shuffle=False)
-    test_loader = DataLoader(test_dataset, batch_size=1, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=2, shuffle=True, num_workers=4) # Loads dataset batches of batch_size
+    val_loader = DataLoader(val_dataset, batch_size=2, shuffle=False)
+    test_loader = DataLoader(test_dataset, batch_size=2, shuffle=False)
     
     return train_loader , val_loader , test_loader
