@@ -29,61 +29,30 @@ def compute_metrics(pred, true, num_classes):
         iou = tp / (tp + fp + fn) if (tp + fp + fn) > 0 else np.nan
         IoU.append(iou)
         CPA.append(cpa)
-    return np.nanmean(IoU), CPA
+    return np.nanmean(IoU)
 
 # Metrics
-def compute_metrics_per_image(preds, masks, num_classes):
-    """
-    preds: [B, H, W] long tensor
-    masks: [B, H, W] long tensor
-    Returns: mean_cpa, mean_iou over batch (per-image averaged)
-    """
-    batch_cpa = []
-    batch_iou = []
 
-    for i in range(preds.shape[0]):
-        img_pred = preds[i]
-        img_mask = masks[i]
 
-        img_cpa = []
-        img_iou = []
 
-        for cls in range(num_classes):
-            mask_cls = (img_mask == cls)
-            pred_cls = (img_pred == cls)
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
 
-            # Skip class if not present in mask
-            if mask_cls.sum().item() == 0:
-                continue
 
-            intersect = (mask_cls & pred_cls).sum().item()
-            union = (mask_cls | pred_cls).sum().item()
+def train_segformer(model, train_loader, val_loader,
+                    num_classes=9, epochs=50, lr=1e-4, device="cuda"):
 
-            # CPA
-            img_cpa.append(intersect / mask_cls.sum().item())
-
-            # IoU
-            if union > 0:
-                img_iou.append(intersect / union)
-
-        # Average over classes **present in this image**
-        if img_cpa:
-            batch_cpa.append(np.mean(img_cpa))
-        if img_iou:
-            batch_iou.append(np.mean(img_iou))
-
-    # Average over batch
-    mean_cpa = np.mean(batch_cpa)
-    mean_iou = np.mean(batch_iou)
-
-    return mean_cpa, mean_iou
-
-def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs=50, lr=1e-4, device="cuda"):
     model = model.to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=lr, weight_decay=0.01)
     criterion = nn.CrossEntropyLoss()
 
     best_val_miou = 0.0
+
+    # ---- For plotting ----
+    train_losses = []
+    val_losses = []
 
     for epoch in range(epochs):
         model.train()
@@ -96,8 +65,10 @@ def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs
             outputs = model(imgs)
             logits = outputs.logits
 
-            # Resize logits to mask size
-            logits = F.interpolate(logits, size=masks.shape[-2:], mode='bilinear', align_corners=False)
+            logits = F.interpolate(logits,
+                                   size=masks.shape[-2:],
+                                   mode='bilinear',
+                                   align_corners=False)
 
             loss = criterion(logits, masks)
             loss.backward()
@@ -106,6 +77,7 @@ def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs
             train_loss += loss.item()
 
         train_loss /= len(train_loader)
+        train_losses.append(train_loss)
 
         # ===============================
         # Validation
@@ -118,7 +90,11 @@ def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs
             for imgs, masks in val_loader:
                 imgs, masks = imgs.to(device), masks.to(device)
                 outputs = model(imgs)
-                logits = F.interpolate(outputs.logits, size=masks.shape[-2:], mode='bilinear', align_corners=False)
+
+                logits = F.interpolate(outputs.logits,
+                                       size=masks.shape[-2:],
+                                       mode='bilinear',
+                                       align_corners=False)
 
                 loss = criterion(logits, masks)
                 val_loss += loss.item()
@@ -128,20 +104,53 @@ def train_model_segformer(model, train_loader, val_loader, num_classes=9, epochs
                 all_masks.append(masks.cpu())
 
         val_loss /= len(val_loader)
+        val_losses.append(val_loss)
+
         all_preds = torch.cat(all_preds, dim=0)
         all_masks = torch.cat(all_masks, dim=0)
-        mean_cpa, mean_iou = compute_metrics_per_image(all_preds, all_masks, num_classes)
-    
+        print(all_preds.shape)
+
+        mean_iou = compute_metrics(all_preds, all_masks, num_classes)
 
         print(f"Epoch [{epoch+1}/{epochs}] "
               f"Train Loss: {train_loss:.4f} | Val Loss: {val_loss:.4f} "
-              f"| CPA: {mean_cpa:.4f} | mIoU: {mean_iou:.4f}")
+              f" mIoU: {mean_iou:.4f}")
 
         # Save best model
         if mean_iou > best_val_miou:
             best_val_miou = mean_iou
-            torch.save(model.state_dict(), "best_segformer_sas.pth")
+            torch.save(model.state_dict(), f"CWFA_segformer_sas_{epoch}.pth")
             print("Saved Best Model ✅")
+
+        # ===============================
+        # Plot every 20 epochs
+        # ===============================
+        if (epoch + 1) % 20 == 0:
+            plt.figure(figsize=(7,5))
+            plt.plot(train_losses, label="Train Loss")
+            plt.plot(val_losses, label="Val Loss")
+            plt.xlabel("Epoch")
+            plt.ylabel("Loss")
+            plt.title("Training/Validation Loss Curve")
+            plt.legend()
+            plt.grid()
+            plt.show()
+
+    # ===============================
+    # Final full plot at the end
+    # ===============================
+    plt.figure(figsize=(7,5))
+    plt.plot(train_losses, label="Train Loss")
+    plt.plot(val_losses, label="Val Loss")
+    plt.xlabel("Epoch")
+    plt.ylabel("Loss")
+    plt.title("Final Training/Validation Loss Curve")
+    plt.legend()
+    plt.grid()
+    plt.show()
+
+    print("Training Completed.")
+
 
 
 def train_model_UNet(model, train_loader, val_loader, *, NUM_CLASSES=9, NUM_EPOCHS=500, LR=1e-5, WEIGHT_DECAY=0.01):
